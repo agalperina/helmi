@@ -1,0 +1,434 @@
+---
+title: "WGSvs16S"
+author: "Anastasia Galperina"
+date: "2/2/2023"
+output: html_document
+---
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Load in packages
+library(phyloseq)
+library(ggplot2)
+library(microbiome)  
+library(Maaslin2)
+library(ggpubr)
+library(dplyr)
+library(plotly)
+library(tidyr)
+library(vegan)
+```
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Load in data
+brakenHumGut_16S_WGS <- readRDS("16S_WGS/PhySeq_C2_23.01.23.rds") 
+
+# Remove repeats
+brakenHumGut_16S_WGS <- subset_samples(brakenHumGut_16S_WGS,! (rownames(brakenHumGut_16S_WGS@sam_data) %in% c("16S_Perhe796_B4_HiSeq7.1", "16S_Perhe113_B1_HiSeq4.1", "16S_Perhe126_B1_HiSeq4.1", "16S_Perhe126_B4_HiSeq4.1", "16S_Perhe175_B4_HiSeq4.1", "16S_Perhe248_B4_MiSeq29.1", "16S_Perhe350_B1_HiSeq6.1", "16S_Perhe350_B4_HiSeq6.1", "16S_Perhe396_B1_HiSeq6.1", "16S_Perhe396_B5_HiSeq6.1", "16S_Perhe728_B7_HiSeq5.1", "16S_Perhe396_B4_HiSeq6.1")))
+# aggregate ar family level
+fam_brakenHumGut_16S_WGS <- tax_glom(brakenHumGut_16S_WGS, taxrank= "family")
+```
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Generate data for alpha diversity, richness, evenness, rariy, etc. 
+WGS_16S_alpha <- alpha(brakenHumGut_16S_WGS, index = "all", zeroes = TRUE)
+WGS_16S_fam_alpha <- alpha(fam_brakenHumGut_16S_WGS, index = "shannon", zeroes = TRUE)
+WGS_16S_fam_alpha$evenness_pielou <- fam_evenness_16S_WGS$pielou
+WGS_16S_fam_alpha$rarity_log_modulo_skewness <- fam_rarity_16S_WGS$log_modulo_skewness
+
+fam_richness_16S_WGS <- richness(fam_brakenHumGut_16S_WGS) 
+fam_evenness_16S_WGS <- evenness(fam_brakenHumGut_16S_WGS, index = "all", zeroes = TRUE, detection = 0) 
+fam_rarity_16S_WGS <- rarity(fam_brakenHumGut_16S_WGS, index = "all")
+```
+
+## Alpha Diversity
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Create graphing data and clean up names
+graph_WGS_16S_alpha <- WGS_16S_alpha
+graph_WGS_16S_alpha$timepoint <- row.names(graph_WGS_16S_alpha)
+graph_WGS_16S_alpha$timepoint <- gsub('_Perhe[0-9]+_','_',graph_WGS_16S_alpha$timepoint)
+graph_WGS_16S_alpha$timepoint <- gsub("16S_|WGS_|_NovaSeq2.*|_Riptide.1|_HiSeq.*|_MiSeq.*","",graph_WGS_16S_alpha$timepoint)
+graph_WGS_16S_alpha$technology <- row.names(graph_WGS_16S_alpha)
+graph_WGS_16S_alpha$technology <- gsub('_Perhe.*','',graph_WGS_16S_alpha$technology)
+
+# Remove samples with minimal data points
+graph_WGS_16S_alpha <- graph_WGS_16S_alpha[!grepl("B2", graph_WGS_16S_alpha$timepoint),]
+graph_WGS_16S_alpha <- graph_WGS_16S_alpha[!grepl("B6", graph_WGS_16S_alpha$timepoint),]
+
+# Diversity Shannon
+
+WGS_16S_diversity_graph <- ggplot(graph_WGS_16S_alpha, aes(x = technology, y = diversity_shannon,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("WGS vs. 16S Genus Shannon Diversity") +
+  labs(y = "Diversity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 3.45, label.x = 0.75) 
+WGS_16S_diversity_graph
+
+# Evenness 
+
+WGS_16S_evenness_graph <- ggplot(graph_WGS_16S_alpha, aes(x = technology, y = evenness_pielou,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("WGS vs. 16S Genus Pielou Evenness") +
+  labs(y = "Evenness", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 1.0, label.x = 0.75) 
+WGS_16S_evenness_graph
+
+# Rarity 
+
+WGS_16S_rarity_graph <- ggplot(graph_WGS_16S_alpha, aes(x = technology, y = rarity_log_modulo_skewness,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("WGS vs. 16S Genus Low Modulo Skewness Rarity") +
+  labs(y = "Rarity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 2.062, label.x = 0.75)  
+WGS_16S_rarity_graph
+
+# Family Level
+
+# Graphing data
+# Create graphing data and clean up names
+
+WGS_16S_fam_graph_alpha <- WGS_16S_fam_alpha
+WGS_16S_fam_graph_alpha$timepoint <- row.names(WGS_16S_fam_graph_alpha)
+WGS_16S_fam_graph_alpha$timepoint <- gsub('_Perhe[0-9]+_','_',WGS_16S_fam_graph_alpha$timepoint)
+WGS_16S_fam_graph_alpha$timepoint <- gsub("16S_|WGS_|_NovaSeq2.*|_Riptide.1|_HiSeq.*|_MiSeq.*","",WGS_16S_fam_graph_alpha$timepoint)
+WGS_16S_fam_graph_alpha$technology <- row.names(WGS_16S_fam_graph_alpha)
+WGS_16S_fam_graph_alpha$technology <- gsub('_Perhe.*','',WGS_16S_fam_graph_alpha$technology)
+
+# Diversity Shannon
+# Remove timepoints with minimal data points
+WGS_16S_fam_graph_alpha <- WGS_16S_fam_graph_alpha[!grepl("B2", WGS_16S_fam_graph_alpha$timepoint),]
+WGS_16S_fam_graph_alpha <- WGS_16S_fam_graph_alpha[!grepl("B6", WGS_16S_fam_graph_alpha$timepoint),]
+
+WGS_16S_fam_diversity_graph <- ggplot(WGS_16S_fam_graph_alpha, aes(x = technology, y = diversity_shannon,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("WGS vs. 16S Family Shannon Diversity") +
+  labs(y = "Diversity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 3.45, label.x = 0.75) 
+WGS_16S_fam_diversity_graph
+
+# Evenness 
+
+WGS_16S_fam_evenness_graph <- ggplot(WGS_16S_fam_graph_alpha, aes(x = technology, y = evenness_pielou,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("WGS vs. 16S Family Pielou Evenness") +
+  labs(y = "Evenness", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 1.0, label.x = 0.75)
+WGS_16S_fam_evenness_graph
+
+# Rarity 
+
+WGS_16S_fam_rarity_graph <- ggplot(WGS_16S_fam_graph_alpha, aes(x = technology, y = rarity_log_modulo_skewness,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("WGS vs. 16S Family Low Modulo Skewness Rarity") +
+  labs(y = "Rarity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 2.063, label.x = 0.75) 
+WGS_16S_fam_rarity_graph
+```
+
+## MaAslin Results - no significant results 
+
+No significant results means the difference between sequencing types are not consistent across samples. 
+
+## Distances
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Transform data for distance calculation
+t_brakenHumGut_16S_WGS <- microbiome::transform(brakenHumGut_16S_WGS, "compositional")
+fam_t_brakenHumGut_16S_WGS <- microbiome::transform(fam_brakenHumGut_16S_WGS, "compositional")
+
+# Distance calculation
+WGS_16S_distance_matrix <- distance(t_brakenHumGut_16S_WGS, "bray")
+WGS_16S_distance_matrix <- as(WGS_16S_distance_matrix, "matrix")
+# Remove WGS from rows and 16S data from columns so not to compare WGS to WGS and 16S to 16S
+WGS_16S_distance_matrix_compared <- WGS_16S_distance_matrix[!grepl("WGS",rownames(WGS_16S_distance_matrix)),]
+WGS_16S_distance_matrix_compared <- WGS_16S_distance_matrix_compared[,!grepl("16S",colnames(WGS_16S_distance_matrix_compared))]
+
+# Reorder in order to make sure each sample was compared to itself with the different technology
+WGS_16S_distance_matrix_compared <- WGS_16S_distance_matrix_compared[order(row.names(WGS_16S_distance_matrix_compared)), ]
+
+# Repeat on family level
+fam_WGS_16S_distance_matrix <- distance(fam_t_brakenHumGut_16S_WGS, "bray")
+fam_WGS_16S_distance_matrix <- as(fam_WGS_16S_distance_matrix, "matrix")
+fam_WGS_16S_distance_matrix_compared <- fam_WGS_16S_distance_matrix[!grepl("WGS",rownames(fam_WGS_16S_distance_matrix)),]
+fam_WGS_16S_distance_matrix_compared <- fam_WGS_16S_distance_matrix_compared[,!grepl("16S",colnames(fam_WGS_16S_distance_matrix_compared))]
+
+fam_WGS_16S_distance_matrix_compared <- fam_WGS_16S_distance_matrix_compared[order(row.names(fam_WGS_16S_distance_matrix_compared)), ]
+
+# # Obtain NOT the diagonal and the diagonal from distance matrix and plot
+# long format object from tidyverse  pivot_longer 
+
+df.WGS_16S_distance_matrix_compared <- as.data.frame(WGS_16S_distance_matrix_compared)
+df.WGS_16S_distance_matrix_compared$S16 <- rownames(WGS_16S_distance_matrix_compared)
+
+# Change format of matrix 
+distance_long <- gather(df.WGS_16S_distance_matrix_compared, WGS, distance, WGS_Perhe100_B1_NovaSeq2.1:WGS_Perhe976_M_NovaSeq2.1, factor_key=TRUE)
+
+# CLeaning up names to ease separation to diagonal and not diagonal 
+distance_long$S16 <- gsub("16S_|_HiSeq.*|_MiSeq.*","",distance_long$S16)
+distance_long$WGS <- gsub("WGS_|_NovaSeq.*|_Riptide.*","",distance_long$WGS)
+
+# Get diagonal and non-diagonal samples 
+diagonal <- distance_long[distance_long$S16 == distance_long$WGS, ]
+not_diagonal <- distance_long[distance_long$S16 != distance_long$WGS, ]
+
+# plot as boxplot with time point to show evolution by time point
+
+diagonal$timepoint <- diagonal$S16
+diagonal$timepoint <- gsub("Perhe[0-9]+_", "",diagonal$timepoint)
+
+not_diagonal$timepoint <- not_diagonal$WGS
+not_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",not_diagonal$timepoint )
+
+# Get the diagonal and non-diagonal 
+not_diagonal <- not_diagonal %>% mutate(intra=FALSE)
+diagonal <- diagonal %>% mutate(intra=TRUE)
+
+# Create plotting data 
+distance_boxplot <- add_row(not_diagonal,diagonal)
+
+# remove B2 and B6 due to low sample size
+distance_boxplot <- distance_boxplot[!grepl("B6|B2",distance_boxplot$timepoint),]
+
+# Plot 
+distance_graph <- ggplot(distance_boxplot, aes(x = timepoint, y = distance, color = intra)) + 
+  geom_boxplot() + 
+  ggtitle("WGS vs 16S Genus Bray Distance")
+distance_graph
+
+## Repeat for Family level
+
+df.fam_WGS_16S_distance_matrix_compared <- as.data.frame(fam_WGS_16S_distance_matrix_compared)
+df.fam_WGS_16S_distance_matrix_compared$S16 <- rownames(fam_WGS_16S_distance_matrix_compared)
+
+fam_distance_long <- gather(df.fam_WGS_16S_distance_matrix_compared, WGS, distance, WGS_Perhe100_B1_NovaSeq2.1:WGS_Perhe976_M_NovaSeq2.1, factor_key=TRUE)
+
+fam_distance_long$S16 <- gsub("16S_|_HiSeq.*|_MiSeq.*","",fam_distance_long$S16)
+fam_distance_long$WGS <- gsub("WGS_|_NovaSeq.*|_Riptide.*","",fam_distance_long$WGS)
+
+fam_diagonal <- fam_distance_long[fam_distance_long$S16 == fam_distance_long$WGS, ]
+fam_not_diagonal <- fam_distance_long[fam_distance_long$S16 != fam_distance_long$WGS, ]
+
+# plot as boxplot with time point to show evolution by time point
+
+fam_diagonal$timepoint <- fam_diagonal$S16
+fam_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",fam_diagonal$timepoint)
+
+fam_not_diagonal$timepoint <- fam_not_diagonal$WGS
+fam_not_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",fam_not_diagonal$timepoint )
+
+fam_not_diagonal <- fam_not_diagonal %>% mutate(intra=FALSE)
+fam_diagonal <- fam_diagonal %>% mutate(intra=TRUE)
+
+fam_distance_boxplot <- add_row(fam_not_diagonal,fam_diagonal)
+
+# remove B2 and B6 due to low sample size
+fam_distance_boxplot <- fam_distance_boxplot[!grepl("B6|B2",fam_distance_boxplot$timepoint),]
+
+fam_distance_graph <- ggplot(fam_distance_boxplot, aes(x = timepoint, y = distance, color = intra)) + 
+  geom_boxplot() + 
+  ggtitle("WGS vs 16S Family Bray Distance")
+fam_distance_graph
+```
+
+## Relative Abundance
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Select one sample to plot relative abundance 
+genus_subset_Perhe116_B2 <- brakenHumGut_16S_WGS %>%
+  subset_samples(brakenHumGut_16S_WGS@sam_data == "Perhe116_B2") 
+
+# Transform to easier object to plot with 
+genus_subset.df.Perhe116_B2 <- psmelt(genus_subset_Perhe116_B2)
+
+# Split based on technology 
+S16_Genus_subset_Perhe116_B2 <- genus_subset.df.Perhe116_B2[grepl("rRNA",genus_subset.df.Perhe116_B2$Sequencing_type),]
+WGS_Genus_subset_Perhe116_B2 <- genus_subset.df.Perhe116_B2[grepl("in_House",genus_subset.df.Perhe116_B2$Sequencing_type),]
+
+# Transform data
+S16_Genus_subset_Perhe116_B2["Abundance"] <- transform(S16_Genus_subset_Perhe116_B2["Abundance"], "compositional")
+WGS_Genus_subset_Perhe116_B2["Abundance"] <- transform(WGS_Genus_subset_Perhe116_B2["Abundance"], "compositional")
+
+# Merge to one plotting object 
+genus_subset_merged_Perhe116_B2 <- merge(S16_Genus_subset_Perhe116_B2, WGS_Genus_subset_Perhe116_B2, all = TRUE)
+
+# Plot genus
+genus_abundance_Perhe116_B2<- ggplot(genus_subset_merged_Perhe116_B2, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("WGS vs 16S Genus Perhe116_B2 Abudance in Sequencing Types")
+genus_abundance_Perhe116_B2
+
+# plot family 
+family_abundance_Perhe116_B2 <- ggplot(genus_subset_merged_Perhe116_B2, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("WGS vs 16S Family Perhe116_B2 Abudance in Sequencing Types")
+family_abundance_Perhe116_B2
+
+# Perhe154_B6 only 1 of these timepoints
+
+# Repeated workflow as described above 
+genus_subset_Perhe154_B6 <- brakenHumGut_16S_WGS %>%
+  subset_samples(brakenHumGut_16S_WGS@sam_data == "Perhe154_B6") 
+
+genus_subset.df.Perhe154_B6 <- psmelt(genus_subset_Perhe154_B6)
+S16_Genus_subset_Perhe154_B6 <- genus_subset.df.Perhe154_B6[grepl("rRNA",genus_subset.df.Perhe154_B6$Sequencing_type),]
+WGS_Genus_subset_Perhe154_B6 <- genus_subset.df.Perhe154_B6[grepl("in_House",genus_subset.df.Perhe154_B6$Sequencing_type),]
+
+S16_Genus_subset_Perhe154_B6["Abundance"] <- transform(S16_Genus_subset_Perhe154_B6["Abundance"], "compositional")
+WGS_Genus_subset_Perhe154_B6["Abundance"] <- transform(WGS_Genus_subset_Perhe154_B6["Abundance"], "compositional")
+
+genus_subset_merged_Perhe154_B6 <- merge(S16_Genus_subset_Perhe154_B6, WGS_Genus_subset_Perhe154_B6, all = TRUE)
+
+genus_abundance_Perhe154_B6 <- ggplot(genus_subset_merged_Perhe154_B6, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("WGS vs 16S Genus Perhe154_B6 Abudance in Sequencing Types")
+#genus_abundance_Perhe154_B6
+
+family_abundance_Perhe154_B6 <- ggplot(genus_subset_merged_Perhe154_B6, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("WGS vs 16S Family Perhe154_B6 Abudance in Sequencing Types")
+#family_abundance_Perhe154_B6
+
+# 100_B7
+
+# Repeated workflow as described above
+genus_subset_Perhe100_B7 <- brakenHumGut_16S_WGS %>%
+  subset_samples(brakenHumGut_16S_WGS@sam_data == "Perhe100_B7") 
+
+genus_subset.df.Perhe100_B7 <- psmelt(genus_subset_Perhe100_B7)
+S16_Genus_subset_Perhe100_B7 <- genus_subset.df.Perhe100_B7[grepl("rRNA",genus_subset.df.Perhe100_B7$Sequencing_type),]
+WGS_Genus_subset_Perhe100_B7 <- genus_subset.df.Perhe100_B7[grepl("in_House",genus_subset.df.Perhe100_B7$Sequencing_type),]
+
+S16_Genus_subset_Perhe100_B7["Abundance"] <- transform(S16_Genus_subset_Perhe100_B7["Abundance"], "compositional")
+WGS_Genus_subset_Perhe100_B7["Abundance"] <- transform(WGS_Genus_subset_Perhe100_B7["Abundance"], "compositional")
+
+genus_subset_merged_Perhe100_B7 <- merge(S16_Genus_subset_Perhe100_B7, WGS_Genus_subset_Perhe100_B7, all = TRUE)
+
+genus_abundance_Perhe100_B7 <- ggplot(genus_subset_merged_Perhe100_B7, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("WGS vs 16S Genus Perhe100_B7 Abudance in Sequencing Types")
+genus_abundance_Perhe100_B7
+
+family_abundance_Perhe100_B7 <- ggplot(genus_subset_merged_Perhe100_B7, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("WGS vs 16S Family Perhe100_B7 Abudance in Sequencing Types")
+family_abundance_Perhe100_B7
+
+# Perhe1058_M          
+
+# Repeated workflow as described above
+genus_subset_Perhe1058_M <- brakenHumGut_16S_WGS %>%
+  subset_samples(brakenHumGut_16S_WGS@sam_data == "Perhe1058_M") 
+
+genus_subset.df.Perhe1058_M <- psmelt(genus_subset_Perhe1058_M)
+S16_Genus_subset_Perhe1058_M <- genus_subset.df.Perhe1058_M[grepl("rRNA",genus_subset.df.Perhe1058_M$Sequencing_type),]
+WGS_Genus_subset_Perhe1058_M <- genus_subset.df.Perhe1058_M[grepl("in_House",genus_subset.df.Perhe1058_M$Sequencing_type),]
+
+S16_Genus_subset_Perhe1058_M["Abundance"] <- transform(S16_Genus_subset_Perhe1058_M["Abundance"], "compositional")
+WGS_Genus_subset_Perhe1058_M["Abundance"] <- transform(WGS_Genus_subset_Perhe1058_M["Abundance"], "compositional")
+
+genus_subset_merged_Perhe1058_M <- merge(S16_Genus_subset_Perhe1058_M, WGS_Genus_subset_Perhe1058_M, all = TRUE)
+
+genus_abundance_Perhe1058_M <- ggplot(genus_subset_merged_Perhe1058_M, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("WGS vs 16S Genus Perhe1058_M Abudance in Sequencing Types")
+genus_abundance_Perhe1058_M
+
+family_abundance_Perhe1058_M <- ggplot(genus_subset_merged_Perhe1058_M, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("WGS vs 16S Family Perhe1058_M Abudance in Sequencing Types")
+family_abundance_Perhe1058_M
+```
+
+## PERMANOVA
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Get distance object
+dist = phyloseq::distance(t_brakenHumGut_16S_WGS, method = "bray")
+
+# Ordination object
+ordination = ordinate(t_brakenHumGut_16S_WGS, method = "PCoA", distance = dist) # should I use transformed obj here?
+
+# Plot ordination
+PCoA_genus <- plot_ordination(t_brakenHumGut_16S_WGS, ordination, color = "Sequencing_type",title="PCoA Genus WGS vs 16S") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+PCoA_genus
+
+# Run permanova 
+perm_genus_metadata <- data.frame(sample_data(t_brakenHumGut_16S_WGS))
+sequencing_type_adonis <- adonis2(dist ~ Sequencing_type, data = perm_genus_metadata)
+sequencing_type_adonis
+
+# subset parental samples to see if there is a significance there
+
+subset_parents <- subset_samples(t_brakenHumGut_16S_WGS, Sample_type %in% c("M","F"))
+
+parent_dist = phyloseq::distance(subset_parents, method = "bray")
+
+parent_ordination = ordinate(subset_parents, method = "PCoA", distance = parent_dist)
+
+gparent_PCoA <- plot_ordination(subset_parents, parent_ordination, color = "Sequencing_type",title="Parent PCoA Genus WGS vs 16S") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+gparent_PCoA
+
+parent_perm_genus_metadata <- data.frame(sample_data(subset_parents))
+parent_sequencing_type_adonis <- adonis2(parent_dist ~ Sequencing_type, data = parent_perm_genus_metadata)
+parent_sequencing_type_adonis
+
+# Family
+# subset parental samples to see if there is a significance there
+
+fam_t_brakenHumGut_16S_WGS@sam_data[["Sequencing_type"]] <- gsub("HiSeq|MiSeq","16S",fam_t_brakenHumGut_16S_WGS@sam_data[["Sequencing_type"]] )
+
+fam_dist = phyloseq::distance(fam_t_brakenHumGut_16S_WGS, method = "bray")
+
+fam_ordination = ordinate(fam_t_brakenHumGut_16S_WGS, method = "PCoA", distance = fam_dist)
+
+fam_PCoA_genus <- plot_ordination(fam_t_brakenHumGut_16S_WGS, fam_ordination, color = "Sequencing_type", title="PCoA Family WGS vs 16S") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+fam_PCoA_genus
+
+fam_perm_genus_metadata <- data.frame(sample_data(fam_t_brakenHumGut_16S_WGS))
+fam_sequencing_type_adonis <- adonis2(fam_dist ~ Sequencing_type, data = fam_perm_genus_metadata)
+fam_sequencing_type_adonis
+
+# subset parental samples to see if there is a significance there
+
+fam_subset_parents <- subset_samples(fam_t_brakenHumGut_16S_WGS, Sample_type %in% c("M","F"))
+
+fam_parent_dist = phyloseq::distance(fam_subset_parents, method = "bray")
+
+fam_parent_ordination = ordinate(fam_subset_parents, method = "PCoA", distance = fam_parent_dist)
+
+fam_parent_PCoA_genus <- plot_ordination(fam_subset_parents, fam_parent_ordination, color = "Sequencing_type",title="Parent PCoA Family WGS vs 16S") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+fam_parent_PCoA_genus
+
+fam_parent_perm_genus_metadata <- data.frame(sample_data(fam_subset_parents))
+fam_parent_sequencing_type_adonis <- adonis2(fam_parent_dist ~ Sequencing_type, data = fam_parent_perm_genus_metadata)
+fam_parent_sequencing_type_adonis
+```
+

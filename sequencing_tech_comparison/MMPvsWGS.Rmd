@@ -1,0 +1,495 @@
+---
+title: "MMPvsWGS"
+author: "Anastasia Galperina"
+date: "2/2/2023"
+output: html_document
+---
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Load in packages
+
+library(phyloseq)
+library(ggplot2)
+library(microbiome)  
+library(Maaslin2)
+library(ggpubr)
+library(dplyr)
+library(plotly)
+library(tidyr)
+library(vegan)
+```
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Load in data
+brakenHumGut_MMP_WGS <- readRDS("PhySeq_BrakenHumGut_18.01.23.rds") 
+```
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# aggregate at genus and family level
+genus_brakenHumGut_MMP_WGS <- tax_glom(brakenHumGut_MMP_WGS, taxrank = "genus")
+fam_brakenHumGut <- tax_glom(brakenHumGut_MMP_WGS, taxrank= "family")
+```
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Transform, normalize and rarefy 
+genus_brakenHumGut_norm_MMP_WGS <- microbiome::transform(genus_brakenHumGut_MMP_WGS, "compositional")
+genus_brakenHumGut_filt_MMP_WGS <- core_members(genus_brakenHumGut_norm_MMP_WGS, detection = .1/100, prevalence = 1/100)
+genus_brakenHumGut_denoised_MMPG_WGS <- prune_taxa(genus_brakenHumGut_filt_MMP_WGS, genus_brakenHumGut_MMP_WGS)
+genus_brakenHumGut_rarefy_MMP_WGS <- rarefy_even_depth(genus_brakenHumGut_denoised_MMPG_WGS)
+
+fam_brakenHumGut_norm <- microbiome::transform(fam_brakenHumGut, "compositional")
+fam_brakenHumGut_filt <- core_members(fam_brakenHumGut_norm, detection = .1/100, prevalence = 1/100)
+fam_brakenHumGut_denoised <- prune_taxa(fam_brakenHumGut_filt, fam_brakenHumGut)
+fam_brakenHumGut_rarefy <- rarefy_even_depth(fam_brakenHumGut_denoised)
+
+```
+
+## Alpha Diversity 
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Generate data for alpha diversity, richness, evenness, rariy, etc. 
+genus_richness_MMP_WGS <- richness(genus_brakenHumGut_rarefy_MMP_WGS) 
+genus_evenness_MMP_WGS  <- evenness(genus_brakenHumGut_rarefy_MMP_WGS , index = "all", zeroes = TRUE, detection = 0) 
+genus_rarity_MMP_WGS  <- rarity(genus_brakenHumGut_rarefy_MMP_WGS , index = "all")
+genus_alpha_MMP_WGS  <- alpha(genus_brakenHumGut_rarefy_MMP_WGS , index = "all", zeroes = TRUE) 
+
+# Graphing data
+# Create graphing data and clean up names
+graph_alpha_MMP_WGS <- genus_alpha_MMP_WGS
+graph_alpha_MMP_WGS$timepoint <- row.names(graph_alpha_MMP_WGS)
+graph_alpha_MMP_WGS$timepoint <- gsub('_Perhe[0-9]+_','_',graph_alpha_MMP_WGS$timepoint)
+graph_alpha_MMP_WGS$timepoint <- gsub("MMP21_|WGS_|_NovaSeq2.1|_Riptide.1","",graph_alpha_MMP_WGS$timepoint)
+graph_alpha_MMP_WGS$technology <- row.names(graph_alpha_MMP_WGS)
+graph_alpha_MMP_WGS$technology <- gsub('21_.*|WGS_Perhe.*_.*_','',graph_alpha_MMP_WGS$technology)
+graph_alpha_MMP_WGS$technology <- gsub('NovaSeq.*|Riptide.*','WGS',graph_alpha_MMP_WGS$technology)
+
+# Repeat to family data 
+fam_richness <- richness(fam_brakenHumGut_rarefy) 
+fam_evenness <- evenness(fam_brakenHumGut_rarefy, index = "all", zeroes = TRUE, detection = 0) 
+fam_rarity <- rarity(fam_brakenHumGut_rarefy, index = "all") 
+fam_alpha <- alpha(fam_brakenHumGut_rarefy, index = "all", zeroes = TRUE) 
+
+fam_graph_alpha <- fam_alpha
+fam_graph_alpha$timepoint <- row.names(fam_graph_alpha)
+fam_graph_alpha$timepoint <- gsub('_Perhe[0-9]+_','_',fam_graph_alpha$timepoint)
+fam_graph_alpha$timepoint <- gsub("MMP21_|WGS_|_NovaSeq2.1|_Riptide.1","",fam_graph_alpha$timepoint)
+fam_graph_alpha$technology <- row.names(fam_graph_alpha)
+fam_graph_alpha$technology <- gsub('21_.*|WGS_Perhe.*_.*_','',fam_graph_alpha$technology)
+fam_graph_alpha$technology <- gsub('NovaSeq.*|Riptide.*','WGS',fam_graph_alpha$technology)
+
+# Alpha diversity graphing
+# Diversity Shannon
+
+diversity_graph_MMP_WGS <- ggplot(graph_alpha_MMP_WGS, aes(x = technology, y = diversity_shannon,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs WGS Genus Shannon Diversity") +
+  labs(y = "Diversity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 3.25, label.x = 0.75) 
+diversity_graph_MMP_WGS
+
+# Evenness 
+
+evenness_graph_MMP_WGS <- ggplot(graph_alpha_MMP_WGS, aes(x = technology, y = evenness_pielou,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs WGS Genus Pielou Evenness") +
+  labs(y = "Evenness", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 1, label.x = 0.75) 
+evenness_graph_MMP_WGS
+
+# Rarity 
+
+rarity_graph_MMP_WGS <- ggplot(graph_alpha_MMP_WGS, aes(x = technology, y = rarity_log_modulo_skewness,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs WGS Genus Low Modulo Skewness Rarity") +
+  labs(y = "Rarity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 2.1, label.x = 0.75) 
+rarity_graph_MMP_WGS
+
+# Diversity Shannon
+
+fam_diversity_graph <- ggplot(fam_graph_alpha, aes(x = technology, y = diversity_shannon,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. WGS Family Shannon Diversity") +
+  labs(y = "Diversity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 3, label.x = 0.75) 
+fam_diversity_graph
+
+# Evenness 
+
+fam_evenness_graph <- ggplot(fam_graph_alpha, aes(x = technology, y = evenness_pielou,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. WGS Family Pielou Evenness") +
+  labs(y = "Evenness", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y =1, label.x = 0.75) 
+fam_evenness_graph
+
+# Rarity 
+
+fam_rarity_graph <- ggplot(fam_graph_alpha, aes(x = technology, y = rarity_log_modulo_skewness,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. WGS Family Low Modulo Skewness Rarity") +
+  labs(y = "Rarity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 2.1, label.x = 0.75) 
+fam_rarity_graph
+
+```
+
+## MaAslin Results
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# maAslin run code used created in another file
+
+#################################################################################
+# Create inputs
+
+#ML2_data <- read.table("data_maaslin_MMP_WGS.txt", sep = "\t", header = T)
+#ML2_metadata <- read.table("maaslin_meta_MMP_WGS.txt", sep = "\t", header = T)
+
+#t_ML2_data <- t(ML2_data)
+
+# make column names first column
+
+#colnames(t_ML2_data) <- t_ML2_data[1,]
+#t_ML2_data <- t_ML2_data[-c(1),]
+#rownames(ML2_metadata) <- ML2_metadata[,3]
+#ML2_metadata <- ML2_metadata[,-c(3)]
+
+#df_t_ML2_data <- data.frame(t_ML2_data)
+#df_ML2_metadata <- data.frame(ML2_metadata)
+
+# runs MaAsLin 2
+                    
+#fit_data_w_random_effect = Maaslin2(
+                    #input_data     = df_t_ML2_data, 
+                    #input_metadata = df_ML2_metadata, 
+                    #min_prevalence = 0.1,
+                    #normalization  = "CLR",
+                    #output         = "MMPvsWGS_w_random_effects", 
+                    #fixed_effects  = "Sequencing_type",
+                    #random_effects = "Sample_type")
+#maaslin_results <- read.table(file = "MMPvsWGS_w_random_effects/significant_results.tsv", sep = "\t", header = T)
+#
+
+#################################################################################
+
+# Load in maAslin results
+species_adult_maaslin_results <- read.table(file = "adult_MMPvsWGS/significant_results.tsv", sep = "\t", header = T)
+species_adult_maaslin_results$feature <- gsub('X','',species_adult_maaslin_results$feature)
+
+tax_table <- read.table("taxonomy_table_18.01.23.csv", sep = ",", header = T)
+
+species_tax_masslin_info <- merge(species_adult_maaslin_results, tax_table, by.x = "feature", by.y = "TaxID")
+
+# make bar chart for each taxa and x axis as coefficient which shows strength 
+# in positive or negative associate 
+
+species_tax_masslin_graph <- species_tax_masslin_info[,c(10:15,16,3,4)]
+
+species_coef_assoc_plot <- ggplot(species_tax_masslin_graph, aes(x = species, y = coef, main = "Coefficient Plot", fill = genus)) + 
+  geom_col() + 
+  coord_flip() +
+  theme(legend.key.size = unit(0.08, 'cm'), axis.text = element_text(size = 6)) + 
+  guides(fill=guide_legend(ncol =1)) +
+  ggtitle("MMP vs. WGS Species Coefficient Plot")
+species_coef_assoc_plot
+```
+
+## Distances
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Create matrix 
+# Transform data for distance calculation
+t_brakenHumGut_MMP_WGS <- microbiome::transform(genus_brakenHumGut_denoised_MMPG_WGS, "compositional")
+fam_t_brakenHumGut_MMP_WGS <- microbiome::transform(fam_brakenHumGut_denoised, "compositional")
+
+# Distance calculation  
+genus_distance_matrix <- distance(genus_brakenHumGut_denoised_MMPG_WGS, "bray")
+genus_distance_matrix <- as(genus_distance_matrix, "matrix")
+# Remove MMP from rows and WGS data from columns so not to compare MMP to MMP and WGS to WGS
+genus_distance_matrix_compared <- genus_distance_matrix[!grepl("MMP",rownames(genus_distance_matrix)),]
+genus_distance_matrix_compared <- genus_distance_matrix_compared[,!grepl("WGS",rownames(genus_distance_matrix))]
+
+# Repeat for family level
+family_distance_matrix <- distance(fam_brakenHumGut_denoised, "bray")
+family_distance_matrix <- as(family_distance_matrix, "matrix")
+family_distance_matrix_compared <- family_distance_matrix[!grepl("MMP",rownames(family_distance_matrix)),]
+family_distance_matrix_compared <- family_distance_matrix_compared[,!grepl("WGS",rownames(family_distance_matrix))]
+
+# Initial boxplot (not used because want to generate diagonal vs non-diagonal plots)
+
+diagonal_distance <- diag(as.matrix(genus_distance_matrix_compared))
+diagonal_distance <- as.data.frame(genus_distance_matrix_compared)
+
+family_diagonal_distance <- diag(as.matrix(family_distance_matrix_compared))
+family_diagonal_distance <- as.data.frame(family_diagonal_distance)
+
+colnames(diagonal_distance) <- "Genus Bray Distance"
+rownames(diagonal_distance) <- rownames(diagonal_distance)
+rownames(diagonal_distance) <- gsub('WGS_|_NovaSeq2.1|_Riptide.1','',rownames(genus_distance_matrix_compared))
+diagonal_distance['Family Bray Distance'] <- family_diagonal_distance
+
+# plot as boxplot with time point to show evolution by time point
+
+diagonal_distance$timepoint <- rownames(diagonal_distance)
+diagonal_distance$timepoint <- gsub('.*_','',diagonal_distance$timepoint)
+
+genus_distance_by_time <- ggplot(diagonal_distance, aes(x = timepoint, y = `Genus Bray Distance`)) + 
+  geom_boxplot() + 
+  geom_jitter(color="black", size=0.4, alpha=0.9)+
+  ggtitle("MMP vs. WGS Genus Bray Distance by Timepoint")
+#genus_distance_by_time
+ 
+family_distance_by_time <- ggplot(diagonal_distance, aes(x = timepoint, y = `Family Bray Distance`)) + 
+  geom_boxplot() + 
+  geom_jitter(color="black", size=0.4, alpha=0.9)+
+  ggtitle("MMP vs. WGS Family Bray Distance by Timepoint")
+#family_distance_by_time
+
+## Updated plot
+# Obtain NOT the  diagonal and plot NOT the diagonal 
+# Long format object from tidyverse  pivot_longer 
+
+df.MMP_16S_distance_matrix_compared <- as.data.frame(genus_distance_matrix_compared)
+df.MMP_16S_distance_matrix_compared$WGS <- rownames(genus_distance_matrix_compared)
+
+# Change format of matrix 
+distance_long <- gather(df.MMP_16S_distance_matrix_compared, MMP, distance, 1:83, factor_key=TRUE)
+
+# CLeaning up names to ease separation to diagonal and not diagonal
+distance_long$WGS <- gsub("WGS_|_Nova.*|_Rip.*","",distance_long$WGS)
+distance_long$MMP <- gsub("MMP21_","",distance_long$MMP)
+
+# Get diagonal and non-diagonal samples 
+diagonal <- distance_long[distance_long$WGS == distance_long$MMP, ]
+not_diagonal <- distance_long[distance_long$WGS != distance_long$MMP, ]
+
+# plot as boxplot with time point to show evolution by time point
+
+diagonal$timepoint <- diagonal$WGS
+diagonal$timepoint <- gsub("Perhe[0-9]+_", "",diagonal$timepoint)
+
+not_diagonal$timepoint <- not_diagonal$MMP
+not_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",not_diagonal$timepoint)
+
+# Get the diagonal and non-diagonal 
+not_diagonal <- not_diagonal %>% mutate(intra=FALSE)
+diagonal <- diagonal %>% mutate(intra=TRUE)
+
+# Create plotting data 
+distance_boxplot <- add_row(not_diagonal,diagonal)
+
+# Plot
+distance_graph <- ggplot(distance_boxplot, aes(x = timepoint, y = distance, color = intra)) + 
+  geom_boxplot() + 
+  ggtitle("MMP vs WGS Genus Bray Distance")
+
+
+## Repeat for Family level 
+
+df.fam_MMP_16S_distance_matrix_compared <- as.data.frame(family_distance_matrix_compared)
+df.fam_MMP_16S_distance_matrix_compared$WGS <- rownames(family_distance_matrix_compared)
+
+fam_distance_long <- gather(df.fam_MMP_16S_distance_matrix_compared, MMP, distance, 1:83, factor_key=TRUE)
+
+fam_distance_long$WGS <- gsub("WGS_|_Rip.*|_Nova.*","",fam_distance_long$WGS)
+fam_distance_long$MMP <- gsub("MMP21_","",fam_distance_long$MMP)
+
+fam_diagonal <- fam_distance_long[fam_distance_long$WGS == fam_distance_long$MMP, ]
+fam_not_diagonal <- fam_distance_long[fam_distance_long$WGS != fam_distance_long$MMP, ]
+
+# plot as boxplot with time point to show evolution by time point
+
+fam_diagonal$timepoint <- fam_diagonal$WGS
+fam_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",fam_diagonal$timepoint)
+
+fam_not_diagonal$timepoint <- fam_not_diagonal$MMP
+fam_not_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",fam_not_diagonal$timepoint)
+
+fam_not_diagonal <- fam_not_diagonal %>% mutate(intra=FALSE)
+fam_diagonal <- fam_diagonal %>% mutate(intra=TRUE)
+
+fam_distance_boxplot <- add_row(fam_not_diagonal,fam_diagonal)
+
+fam_distance_graph <- ggplot(fam_distance_boxplot, aes(x = timepoint, y = distance, color = intra)) + 
+  geom_boxplot() + 
+  ggtitle("MMP vs WGS Family Bray Distance")
+
+distance_graph
+fam_distance_graph
+```
+
+## Relative Abundance
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Perhe1058_M          
+# Select one sample to plot relative abundance
+genus_subset_Perhe1058_M <- genus_brakenHumGut_denoised_MMPG_WGS %>%
+  subset_samples(genus_brakenHumGut_denoised_MMPG_WGS@sam_data == "Perhe1058_M") 
+
+# Transform to easier object to plot with 
+genus_subset.df.Perhe1058_M <- psmelt(genus_subset_Perhe1058_M)
+
+# Split based on technology 
+MMP_Genus_subset_Perhe1058_M <- genus_subset.df.Perhe1058_M[grepl("MMP",genus_subset.df.Perhe1058_M$Sequencing_type),]
+WGS_Genus_subset_Perhe1058_M <- genus_subset.df.Perhe1058_M[grepl("in_House",genus_subset.df.Perhe1058_M$Sequencing_type),]
+
+# Transform data
+MMP_Genus_subset_Perhe1058_M["Abundance"] <- transform(MMP_Genus_subset_Perhe1058_M["Abundance"], "compositional")
+WGS_Genus_subset_Perhe1058_M["Abundance"] <- transform(WGS_Genus_subset_Perhe1058_M["Abundance"], "compositional")
+
+# Merge to one plotting object 
+genus_subset_merged_Perhe1058_M <- merge(MMP_Genus_subset_Perhe1058_M, WGS_Genus_subset_Perhe1058_M, all = TRUE)
+
+# Plot genus
+genus_abundance_Perhe1058_M <- ggplot(genus_subset_merged_Perhe1058_M, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs WGS Genus Perhe1058_M Abudance in Sequencing Types")
+genus_abundance_Perhe1058_M
+
+# Plot family 
+family_abundance_Perhe1058_M <- ggplot(genus_subset_merged_Perhe1058_M, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.key.size = unit(0.05, 'cm'), axis.text = element_text(size = 4)) +
+  ggtitle("MMP vs WGS Family Perhe1058_M Abudance in Sequencing Types")
+family_abundance_Perhe1058_M
+
+# Perhe124_B5
+# Repeated workflow as described above 
+
+genus_subset_Perhe124_B5 <- genus_brakenHumGut_denoised_MMPG_WGS %>%
+  subset_samples(genus_brakenHumGut_denoised_MMPG_WGS@sam_data == "Perhe124_B5") 
+
+genus_subset.df.Perhe124_B5 <- psmelt(genus_subset_Perhe124_B5)
+MMP_Genus_subset_Perhe124_B5 <- genus_subset.df.Perhe124_B5[grepl("MMP",genus_subset.df.Perhe124_B5$Sequencing_type),]
+WGS_Genus_subset_Perhe124_B5 <- genus_subset.df.Perhe124_B5[grepl("in_House",genus_subset.df.Perhe124_B5$Sequencing_type),]
+
+MMP_Genus_subset_Perhe124_B5["Abundance"] <- transform(MMP_Genus_subset_Perhe124_B5["Abundance"], "compositional")
+WGS_Genus_subset_Perhe124_B5["Abundance"] <- transform(WGS_Genus_subset_Perhe124_B5["Abundance"], "compositional")
+
+genus_subset_merged_Perhe124_B5 <- merge(MMP_Genus_subset_Perhe124_B5, WGS_Genus_subset_Perhe124_B5, all = TRUE)
+
+genus_abundance_Perhe124_B5 <- ggplot(genus_subset_merged_Perhe124_B5, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs WGS Genus Perhe124_B5 Abudance in Sequencing Types")
+genus_abundance_Perhe124_B5
+
+family_abundance_Perhe124_B5 <- ggplot(genus_subset_merged_Perhe124_B5, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.key.size = unit(0.05, 'cm'), axis.text = element_text(size = 4)) +
+  ggtitle("MMP vs WGS Family Perhe124_B5 Abudance in Sequencing Types")
+family_abundance_Perhe124_B5
+
+# Perhe52_F
+
+genus_subset_Perhe52_F <- genus_brakenHumGut_denoised_MMPG_WGS %>%
+  subset_samples(genus_brakenHumGut_denoised_MMPG_WGS@sam_data == "Perhe52_F") 
+
+genus_subset.df.Perhe52_F <- psmelt(genus_subset_Perhe52_F)
+MMP_Genus_subset_Perhe52_F <- genus_subset.df.Perhe52_F[grepl("MMP",genus_subset.df.Perhe52_F$Sequencing_type),]
+WGS_Genus_subset_Perhe52_F <- genus_subset.df.Perhe52_F[grepl("in_House",genus_subset.df.Perhe52_F$Sequencing_type),]
+
+MMP_Genus_subset_Perhe52_F["Abundance"] <- transform(MMP_Genus_subset_Perhe52_F["Abundance"], "compositional")
+WGS_Genus_subset_Perhe52_F["Abundance"] <- transform(WGS_Genus_subset_Perhe52_F["Abundance"], "compositional")
+
+genus_subset_merged_Perhe52_F <- merge(MMP_Genus_subset_Perhe52_F, WGS_Genus_subset_Perhe52_F, all = TRUE)
+
+genus_abundance_Perhe52_F <- ggplot(genus_subset_merged_Perhe52_F, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs WGS Genus Perhe52_F Abudance in Sequencing Types")
+genus_abundance_Perhe52_F
+
+family_abundance_Perhe52_F <- ggplot(genus_subset_merged_Perhe52_F, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.key.size = unit(0.05, 'cm'), axis.text = element_text(size = 4)) +
+  ggtitle("MMP vs WGS Family Perhe52_F Abudance in Sequencing Types")
+family_abundance_Perhe52_F
+```
+
+## PERMANOVA
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Get distance object
+dist = phyloseq::distance(genus_brakenHumGut_rarefy_MMP_WGS, method = "bray")
+
+# Ordination object
+ordination = ordinate(genus_brakenHumGut_rarefy_MMP_WGS, method = "PCoA", distance = dist)
+
+# Plot ordination
+PCoA_genus <- plot_ordination(genus_brakenHumGut_rarefy_MMP_WGS, ordination, color = "Sequencing_type", title="PCoA Genus MMP vs WGS") +
+  theme_classic() +
+  theme(strip.background = element_blank())
+PCoA_genus
+
+# Run permanova 
+perm_genus_metadata <- data.frame(sample_data(genus_brakenHumGut_rarefy_MMP_WGS))
+sequencing_type_adonis <- adonis2(dist ~ Sequencing_type, data = perm_genus_metadata)
+sample_type_adonis <- adonis2(dist ~ Sample_type, data = perm_genus_metadata)
+sample_type_adonis
+
+# subset parental samples to see if there is a significance there
+
+subset_parents <- subset_samples(genus_brakenHumGut_rarefy_MMP_WGS, Sample_type %in% c("M","F"))
+
+parent_dist = phyloseq::distance(subset_parents, method = "bray")
+
+parent_ordination = ordinate(subset_parents, method = "PCoA", distance = parent_dist)
+
+parent_PCoA_genus <- plot_ordination(subset_parents, parent_ordination, color = "Sequencing_type", title="Parent PCoA Genus MMP vs WGS") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+parent_PCoA_genus
+
+parent_perm_genus_metadata <- data.frame(sample_data(subset_parents))
+parent_sequencing_type_adonis <- adonis2(parent_dist ~ Sequencing_type, data = parent_perm_genus_metadata)
+parent_sequencing_type_adonis
+
+# Family 
+
+fam_dist = phyloseq::distance(fam_brakenHumGut_rarefy, method = "bray")
+
+fam_ordination = ordinate(fam_brakenHumGut_rarefy, method = "PCoA", distance = fam_dist)
+
+fam_PCoA_genus <- plot_ordination(fam_brakenHumGut_rarefy, fam_ordination, color = "Sequencing_type", title="PCoA Family MMP vs WGS") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+fam_PCoA_genus
+
+fam_perm_genus_metadata <- data.frame(sample_data(fam_brakenHumGut_rarefy))
+fam_sequencing_type_adonis <- adonis2(fam_dist ~ Sequencing_type, data = fam_perm_genus_metadata)
+fam_sample_type_adonis <- adonis2(fam_dist ~ Sample_type, data = fam_perm_genus_metadata)
+fam_sample_type_adonis
+
+# subset parental samples to see if there is a significance there
+
+fam_subset_parents <- subset_samples(fam_brakenHumGut_rarefy, Sample_type %in% c("M","F"))
+
+fam_parent_dist = phyloseq::distance(fam_subset_parents, method = "bray")
+
+fam_parent_ordination = ordinate(fam_subset_parents, method = "PCoA", distance = fam_parent_dist)
+
+fam_parent_PCoA_genus <- plot_ordination(fam_subset_parents, fam_parent_ordination, color = "Sequencing_type", title="Parent PCoA Family MMP vs WGS") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+fam_parent_PCoA_genus
+
+fam_parent_perm_genus_metadata <- data.frame(sample_data(fam_subset_parents))
+fam_parent_sequencing_type_adonis <- adonis2(fam_parent_dist ~ Sequencing_type, data = fam_parent_perm_genus_metadata)
+fam_parent_sequencing_type_adonis
+```
+
+

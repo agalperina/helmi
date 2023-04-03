@@ -1,0 +1,737 @@
+---
+title: "MMPvs16S"
+author: "Anastasia Galperina"
+date: "2/2/2023"
+output: html_document
+---
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Load in packages
+
+library(phyloseq)
+library(ggplot2)
+library(microbiome)  
+library(Maaslin2)
+library(ggpubr)
+library(dplyr)
+library(plotly)
+library(tidyr)
+library(vegan)
+```
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Load in data
+brakenHumGut <- readRDS("16S_MMP/PhySeq_C3_30.01.23.rds") 
+
+# Remove repeats
+brakenHumGut <- subset_samples(brakenHumGut,! (rownames(brakenHumGut@sam_data) %in% 
+                                                              c("16S_Perhe913_B7_HiSeq6.1","16S_Perhe913_B4_HiSeq7.1","16S_Perhe692_B4_HiSeq6.1",
+                                                                "16S_Perhe651_B4_HiSeq6.1","16S_Perhe468_F_HiSeq8.1","16S_Perhe453_B4_HiSeq5.1",
+                                                                "16S_Perhe45_B9_HiSeq7.1", "16S_Perhe303_B7_HiSeq4.1")))
+# aggregate at family level
+fam_brakenHumGut <- tax_glom(brakenHumGut, taxrank= "family") 
+```
+
+## Alpha Diversity 
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Generate data for alpha diversity, richness, evenness, rariy, etc. 
+genus_richness <- richness(brakenHumGut)
+genus_evenness <- evenness(brakenHumGut, index = "pielou", zeroes = TRUE, detection = 0) 
+genus_rarity <- rarity(brakenHumGut, index = "all")
+genus_alpha <- alpha(brakenHumGut, index = "shannon", zeroes = TRUE) 
+genus_alpha$evenness_pielou <- genus_evenness$pielou
+genus_alpha$rarity_log_modulo_skewness <- genus_rarity$log_modulo_skewness
+
+# Graphing data
+# Create graphing data and clean up names
+genus_graph_alpha <- genus_alpha
+genus_graph_alpha$timepoint <- row.names(genus_graph_alpha)
+genus_graph_alpha$timepoint <- gsub('MMP21_|16S_|Perhe[0-9]+_|_Hi.*|_Mi.*','',genus_graph_alpha$timepoint)
+genus_graph_alpha$technology <- row.names(genus_graph_alpha)
+genus_graph_alpha$technology <- gsub('_Perhe.*|Hi.*|Mi.*','',genus_graph_alpha$technology)
+
+# Alpha diversity graphing
+
+MMP_16S_diversity_graph <- ggplot(genus_graph_alpha, aes(x = technology, y = diversity_shannon,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. 16S Genus Shannon Diversity") +
+  labs(y = "Diversity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 3.45, label.x = 0.75) 
+MMP_16S_diversity_graph
+
+
+MMP_16S_evenness_graph <- ggplot(genus_graph_alpha, aes(x = technology, y = evenness_pielou,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. 16S Genus Pielou Evenness") +
+  labs(y = "Evenness", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 1.0, label.x = 0.75) 
+MMP_16S_evenness_graph
+
+MMP_16S_rarity_graph <- ggplot(genus_graph_alpha, aes(x = technology, y = rarity_log_modulo_skewness,color = technology))+
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. 16S Genus Low Modulo Skewness Rarity") +
+  labs(y = "Rarity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 2.062, label.x = 0.75)  
+MMP_16S_rarity_graph
+
+# Repeat to family data 
+fam_richness <- richness(fam_brakenHumGut) 
+fam_evenness <- evenness(fam_brakenHumGut, index = "all", zeroes = TRUE, detection = 0) 
+fam_rarity <- rarity(fam_brakenHumGut, index = "all") 
+fam_alpha <- alpha(fam_brakenHumGut, index = "shannon", zeroes = TRUE) 
+fam_alpha$evenness_pielou <- fam_evenness$pielou
+fam_alpha$rarity_log_modulo_skewness <- fam_rarity$log_modulo_skewness
+  
+MMP_16S_fam_graph_alpha <- fam_alpha
+MMP_16S_fam_graph_alpha$timepoint <- row.names(MMP_16S_fam_graph_alpha)
+MMP_16S_fam_graph_alpha$timepoint <- gsub('MMP21_|16S_|Perhe[0-9]+_|_Hi.*|_Mi.*','',MMP_16S_fam_graph_alpha$timepoint)
+MMP_16S_fam_graph_alpha$technology <- row.names(MMP_16S_fam_graph_alpha)
+MMP_16S_fam_graph_alpha$technology <- gsub('_Perhe.*|Hi.*|Mi.*','',MMP_16S_fam_graph_alpha$technology)
+
+MMP_16S_fam_diversity_graph <- ggplot(MMP_16S_fam_graph_alpha, aes(x = technology, y = diversity_shannon,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. 16S Family Shannon Diversity") +
+  labs(y = "Diversity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 3, label.x = 0.75) 
+MMP_16S_fam_diversity_graph
+
+MMP_16S_fam_evenness_graph <- ggplot(MMP_16S_fam_graph_alpha, aes(x = technology, y = evenness_pielou,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. 16S Family Pielou Evenness") +
+  labs(y = "Evenness", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 3.45, label.x = 0.75)
+MMP_16S_fam_evenness_graph
+
+MMP_16S_fam_rarity_graph <- ggplot(MMP_16S_fam_graph_alpha, aes(x = technology, y = rarity_log_modulo_skewness,color = technology)) +
+  geom_boxplot() +
+  facet_wrap(~timepoint, ncol=3) +
+  ggtitle("MMP vs. 16S Family Low Modulo Skewness Rarity") +
+  labs(y = "Rarity", x = "Technology") +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  stat_compare_means(method = "wilcox.test", size= 2.5, label.y = 2.065, label.x = 0.75) 
+MMP_16S_fam_rarity_graph
+```
+
+## MaAslin Results - no significant results 
+
+No significant results means the difference between sequencing types are not consistent across samples. 
+
+## Distances
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Transform data for distance calculation
+t_brakenHumGut_16S_MMP <- microbiome::transform(brakenHumGut, "compositional")
+fam_t_brakenHumGut_16S_MMP <- microbiome::transform(fam_brakenHumGut, "compositional")
+
+# Distance calculation  
+MMP_16S_distance_matrix <- distance(t_brakenHumGut_16S_MMP, "bray")
+MMP_16S_distance_matrix <- as(MMP_16S_distance_matrix, "matrix")
+# Remove MMP from rows and 16S data from columns so not to compare MMP to MMP and 16S to 16S
+MMP_16S_distance_matrix_compared <- MMP_16S_distance_matrix[!grepl("MMP",rownames(MMP_16S_distance_matrix)),]
+MMP_16S_distance_matrix_compared <- MMP_16S_distance_matrix_compared[,!grepl("16S",colnames(MMP_16S_distance_matrix_compared))]
+
+# Reorder in order to make sure each sample was compared to itself with the different technology
+MMP_16S_distance_matrix_compared <- MMP_16S_distance_matrix_compared[order(row.names(MMP_16S_distance_matrix_compared)), ]
+
+### Testing for duplicate rows that were now since removed in the second chunk ### 
+find_duplicates <- rownames(MMP_16S_distance_matrix_compared)
+find_duplicates <- gsub("16S_|_Hi.*|_Mi.*","",find_duplicates)
+are_duplicates <- duplicated(find_duplicates)
+
+find_row_duplicates <- colnames(MMP_16S_distance_matrix_compared)
+col_duplicates <- duplicated(find_row_duplicates)
+
+find_row_duplicates <- gsub("MMP21_","",find_row_duplicates)
+
+exits_in_both <- find_duplicates %in% find_row_duplicates
+### 
+
+# Repeat on family level 
+fam_MMP_16S_distance_matrix <- distance(fam_t_brakenHumGut_16S_MMP, "bray")
+fam_MMP_16S_distance_matrix <- as(fam_MMP_16S_distance_matrix, "matrix")
+fam_MMP_16S_distance_matrix_compared <- fam_MMP_16S_distance_matrix[!grepl("MMP",rownames(fam_MMP_16S_distance_matrix)),]
+fam_MMP_16S_distance_matrix_compared <- fam_MMP_16S_distance_matrix_compared[,!grepl("16S",colnames(fam_MMP_16S_distance_matrix_compared))]
+
+fam_MMP_16S_distance_matrix_compared <- fam_MMP_16S_distance_matrix_compared[order(row.names(fam_MMP_16S_distance_matrix_compared)), ]
+
+# # Obtain NOT the  diagonal and plot NOT the diagonal 
+# long format object from tidyverse  pivot_longer 
+
+df.MMP_16S_distance_matrix_compared <- as.data.frame(MMP_16S_distance_matrix_compared)
+df.MMP_16S_distance_matrix_compared$S16 <- rownames(MMP_16S_distance_matrix_compared)
+
+# Change format of matrix 
+distance_long <- gather(df.MMP_16S_distance_matrix_compared, MMP, distance, 1:855, factor_key=TRUE)
+
+# CLeaning up names to ease separation to diagonal and not diagonal
+distance_long$S16 <- gsub("16S_|_HiSeq.*|_MiSeq.*","",distance_long$S16)
+distance_long$MMP <- gsub("MMP21_","",distance_long$MMP)
+
+# Get diagonal and non-diagonal samples 
+diagonal <- distance_long[distance_long$S16 == distance_long$MMP, ]
+not_diagonal <- distance_long[distance_long$S16 != distance_long$MMP, ]
+
+# plot as boxplot with time point to show evolution by time point
+
+diagonal$timepoint <- diagonal$S16
+diagonal$timepoint <- gsub("Perhe[0-9]+_", "",diagonal$timepoint)
+
+not_diagonal$timepoint <- not_diagonal$MMP
+not_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",not_diagonal$timepoint)
+
+# Get the diagonal and non-diagonal 
+not_diagonal <- not_diagonal %>% mutate(intra=FALSE)
+diagonal <- diagonal %>% mutate(intra=TRUE)
+
+# Create plotting data 
+distance_boxplot <- add_row(not_diagonal,diagonal)
+
+# Plot
+distance_graph <- ggplot(distance_boxplot, aes(x = timepoint, y = distance, color = intra)) + 
+  geom_boxplot() + 
+  ggtitle("MMP vs 16S Genus Bray Distance")
+distance_graph
+
+## Repeat for Family level 
+
+df.fam_MMP_16S_distance_matrix_compared <- as.data.frame(fam_MMP_16S_distance_matrix_compared)
+df.fam_MMP_16S_distance_matrix_compared$S16 <- rownames(fam_MMP_16S_distance_matrix_compared)
+
+fam_distance_long <- gather(df.fam_MMP_16S_distance_matrix_compared, MMP, distance, 1:855, factor_key=TRUE)
+
+fam_distance_long$S16 <- gsub("16S_|_HiSeq.*|_MiSeq.*","",fam_distance_long$S16)
+fam_distance_long$MMP <- gsub("MMP21_","",fam_distance_long$MMP)
+
+fam_diagonal <- fam_distance_long[fam_distance_long$S16 == fam_distance_long$MMP, ]
+fam_not_diagonal <- fam_distance_long[fam_distance_long$S16 != fam_distance_long$MMP, ]
+
+# plot as boxplot with time point to show evolution by time point
+
+fam_diagonal$timepoint <- fam_diagonal$S16
+fam_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",fam_diagonal$timepoint)
+
+fam_not_diagonal$timepoint <- fam_not_diagonal$MMP
+fam_not_diagonal$timepoint <- gsub("Perhe[0-9]+_", "",fam_not_diagonal$timepoint)
+
+fam_not_diagonal <- fam_not_diagonal %>% mutate(intra=FALSE)
+fam_diagonal <- fam_diagonal %>% mutate(intra=TRUE)
+
+fam_distance_boxplot <- add_row(fam_not_diagonal,fam_diagonal)
+
+fam_distance_graph <- ggplot(fam_distance_boxplot, aes(x = timepoint, y = distance, color = intra)) + 
+  geom_boxplot() + 
+  ggtitle("MMP vs 16S Family Bray Distance")
+fam_distance_graph
+```
+
+# Relative Abundance
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Select one sample to plot relative abundance
+genus_subset_Perhe1058_M <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe1058_M") 
+
+# Transform to easier object to plot with 
+genus_subset.df.Perhe1058_M <- psmelt(genus_subset_Perhe1058_M)
+
+# Split based on technology
+S16_Genus_subset_Perhe1058_M <- genus_subset.df.Perhe1058_M[grepl("MiSeq",genus_subset.df.Perhe1058_M$Sequencing_type),]
+MMP_Genus_subset_Perhe1058_M <- genus_subset.df.Perhe1058_M[grepl("MMP",genus_subset.df.Perhe1058_M$Sequencing_type),]
+
+# Transform data
+S16_Genus_subset_Perhe1058_M["Abundance"] <- transform(S16_Genus_subset_Perhe1058_M["Abundance"], "compositional")
+MMP_Genus_subset_Perhe1058_M["Abundance"] <- transform(MMP_Genus_subset_Perhe1058_M["Abundance"], "compositional")
+
+# Merge to one plotting object 
+genus_subset_merged_Perhe1058_M <- merge(S16_Genus_subset_Perhe1058_M, MMP_Genus_subset_Perhe1058_M, all = TRUE)
+
+# Plot genus
+genus_abundance_Perhe1058_M <- ggplot(genus_subset_merged_Perhe1058_M, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  #theme(legend.key.height = unit(0.01, 'cm'),legend.key.width = unit(0.01, 'cm'), axis.text = element_text(size = 3), legend.text = element_text(size=3)) +
+  ggtitle("MMP vs 16S Genus Perhe1058_M Abudance in Sequencing Types")
+
+# Perhe18_M
+
+# Repeated workflow as described above 
+genus_subset_Perhe18_M <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe18_M") 
+
+genus_subset.df.Perhe18_M<- psmelt(genus_subset_Perhe18_M)
+S16_Genus_subset_Perhe18_M <- genus_subset.df.Perhe18_M[grepl("HiSeq",genus_subset.df.Perhe18_M$Sequencing_type),]
+MMP_Genus_subset_Perhe18_M <- genus_subset.df.Perhe18_M[grepl("MMP",genus_subset.df.Perhe18_M$Sequencing_type),]
+
+S16_Genus_subset_Perhe18_M["Abundance"] <- transform(S16_Genus_subset_Perhe18_M["Abundance"], "compositional")
+MMP_Genus_subset_Perhe18_M["Abundance"] <- transform(MMP_Genus_subset_Perhe18_M["Abundance"], "compositional")
+
+genus_subset_merged_Perhe18_M <- merge(S16_Genus_subset_Perhe18_M, MMP_Genus_subset_Perhe18_M, all = TRUE)
+
+genus_abundance_Perhe18_M <- ggplot(genus_subset_merged_Perhe18_M, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe18_M Abudance in Sequencing Types")
+
+# Perhe1052_M
+
+genus_subset_Perhe1052_M <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe1052_M") 
+
+genus_subset.df.Perhe1052_M <- psmelt(genus_subset_Perhe1052_M)
+S16_Genus_subset_Perhe1052_M <- genus_subset.df.Perhe1052_M[grepl("MiSeq",genus_subset.df.Perhe1052_M$Sequencing_type),]
+MMP_Genus_subset_Perhe1052_M <- genus_subset.df.Perhe1052_M[grepl("MMP",genus_subset.df.Perhe1052_M$Sequencing_type),]
+
+S16_Genus_subset_Perhe1052_M["Abundance"] <- transform(S16_Genus_subset_Perhe1052_M["Abundance"], "compositional")
+MMP_Genus_subset_Perhe1052_M["Abundance"] <- transform(MMP_Genus_subset_Perhe1052_M["Abundance"], "compositional")
+
+genus_subset_merged_Perhe1052_M <- merge(S16_Genus_subset_Perhe1052_M, MMP_Genus_subset_Perhe1052_M, all = TRUE)
+
+genus_abundance_Perhe1052_M <- ggplot(genus_subset_merged_Perhe1052_M, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe1052_M Abudance in Sequencing Types")
+
+# Perhe241_F
+
+genus_subset_Perhe241_F <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe241_F") 
+
+genus_subset.df.Perhe241_F <- psmelt(genus_subset_Perhe241_F)
+S16_Genus_subset_Perhe241_F <- genus_subset.df.Perhe241_F[grepl("HiSeq",genus_subset.df.Perhe241_F$Sequencing_type),]
+MMP_Genus_subset_Perhe241_F<- genus_subset.df.Perhe241_F[grepl("MMP",genus_subset.df.Perhe241_F$Sequencing_type),]
+
+S16_Genus_subset_Perhe241_F["Abundance"] <- transform(S16_Genus_subset_Perhe241_F["Abundance"], "compositional")
+MMP_Genus_subset_Perhe241_F["Abundance"] <- transform(MMP_Genus_subset_Perhe241_F["Abundance"], "compositional")
+
+genus_subset_merged_Perhe241_F <- merge(S16_Genus_subset_Perhe241_F, MMP_Genus_subset_Perhe241_F, all = TRUE)
+
+genus_abundance_Perhe241_F <- ggplot(genus_subset_merged_Perhe241_F, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe241_F Abudance in Sequencing Types")
+
+# Perhe969_M
+
+genus_subset_Perhe969_M <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe969_M") 
+
+genus_subset.df.Perhe969_M <- psmelt(genus_subset_Perhe969_M)
+S16_Genus_subset_Perhe969_M <- genus_subset.df.Perhe969_M[grepl("MiSeq",genus_subset.df.Perhe969_M$Sequencing_type),]
+MMP_Genus_subset_Perhe969_M <- genus_subset.df.Perhe969_M[grepl("MMP",genus_subset.df.Perhe969_M$Sequencing_type),]
+
+S16_Genus_subset_Perhe969_M["Abundance"] <- transform(S16_Genus_subset_Perhe969_M["Abundance"], "compositional")
+MMP_Genus_subset_Perhe969_M["Abundance"] <- transform(MMP_Genus_subset_Perhe969_M["Abundance"], "compositional")
+
+genus_subset_merged_Perhe969_M <- merge(S16_Genus_subset_Perhe969_M, MMP_Genus_subset_Perhe969_M, all = TRUE)
+
+genus_abundance_Perhe969_M <- ggplot(genus_subset_merged_Perhe969_M, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe969_M Abudance in Sequencing Types")
+
+# Infant
+# Perhe74_B5
+
+genus_subset_Perhe74_B5 <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe74_B5") 
+
+genus_subset.df.Perhe74_B5 <- psmelt(genus_subset_Perhe74_B5)
+S16_Genus_subset_Perhe74_B5 <- genus_subset.df.Perhe74_B5[grepl("MiSeq",genus_subset.df.Perhe74_B5$Sequencing_type),]
+MMP_Genus_subset_Perhe74_B5 <- genus_subset.df.Perhe74_B5[grepl("MMP",genus_subset.df.Perhe74_B5$Sequencing_type),]
+
+S16_Genus_subset_Perhe74_B5["Abundance"] <- transform(S16_Genus_subset_Perhe74_B5["Abundance"], "compositional")
+MMP_Genus_subset_Perhe74_B5["Abundance"] <- transform(MMP_Genus_subset_Perhe74_B5["Abundance"], "compositional")
+
+genus_subset_merged_Perhe74_B5 <- merge(S16_Genus_subset_Perhe74_B5, MMP_Genus_subset_Perhe74_B5, all = TRUE)
+
+genus_abundance_Perhe74_B5 <- ggplot(genus_subset_merged_Perhe74_B5, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe74_B5 Abudance in Sequencing Types")
+
+# Perhe78_B5
+
+genus_subset_Perhe78_B5 <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe78_B5") 
+
+genus_subset.df.Perhe78_B5 <- psmelt(genus_subset_Perhe78_B5)
+S16_Genus_subset_Perhe78_B5 <- genus_subset.df.Perhe78_B5[grepl("HiSeq",genus_subset.df.Perhe78_B5$Sequencing_type),]
+MMP_Genus_subset_Perhe78_B5 <- genus_subset.df.Perhe78_B5[grepl("MMP",genus_subset.df.Perhe78_B5$Sequencing_type),]
+
+S16_Genus_subset_Perhe78_B5["Abundance"] <- transform(S16_Genus_subset_Perhe78_B5["Abundance"], "compositional")
+MMP_Genus_subset_Perhe78_B5["Abundance"] <- transform(MMP_Genus_subset_Perhe78_B5["Abundance"], "compositional")
+
+genus_subset_merged_Perhe78_B5 <- merge(S16_Genus_subset_Perhe78_B5, MMP_Genus_subset_Perhe78_B5, all = TRUE)
+
+genus_abundance_Perhe78_B5 <- ggplot(genus_subset_merged_Perhe78_B5, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe78_B5 Abudance in Sequencing Types")
+
+# Perhe766_B5
+
+genus_subset_Perhe766_B5 <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe766_B5") 
+
+genus_subset.df.Perhe766_B5 <- psmelt(genus_subset_Perhe766_B5)
+S16_Genus_subset_Perhe766_B5 <- genus_subset.df.Perhe766_B5[grepl("HiSeq",genus_subset.df.Perhe766_B5$Sequencing_type),]
+MMP_Genus_subset_Perhe766_B5 <- genus_subset.df.Perhe766_B5[grepl("MMP",genus_subset.df.Perhe766_B5$Sequencing_type),]
+
+S16_Genus_subset_Perhe766_B5["Abundance"] <- transform(S16_Genus_subset_Perhe766_B5["Abundance"], "compositional")
+MMP_Genus_subset_Perhe766_B5["Abundance"] <- transform(MMP_Genus_subset_Perhe766_B5["Abundance"], "compositional")
+
+genus_subset_merged_Perhe766_B5 <- merge(S16_Genus_subset_Perhe766_B5, MMP_Genus_subset_Perhe766_B5, all = TRUE)
+
+genus_abundance_Perhe766_B5<- ggplot(genus_subset_merged_Perhe766_B5, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe766_B5 Abudance in Sequencing Types")
+
+# Perhe991_B7
+
+genus_subset_Perhe991_B7 <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe991_B7") 
+
+genus_subset.df.Perhe991_B7<- psmelt(genus_subset_Perhe991_B7)
+S16_Genus_subset_Perhe991_B7 <- genus_subset.df.Perhe991_B7[grepl("MiSeq",genus_subset.df.Perhe991_B7$Sequencing_type),]
+MMP_Genus_subset_Perhe991_B7 <- genus_subset.df.Perhe991_B7[grepl("MMP",genus_subset.df.Perhe991_B7$Sequencing_type),]
+
+S16_Genus_subset_Perhe991_B7["Abundance"] <- transform(S16_Genus_subset_Perhe991_B7["Abundance"], "compositional")
+MMP_Genus_subset_Perhe991_B7["Abundance"] <- transform(MMP_Genus_subset_Perhe991_B7["Abundance"], "compositional")
+
+genus_subset_merged_Perhe991_B7 <- merge(S16_Genus_subset_Perhe991_B7, MMP_Genus_subset_Perhe991_B7, all = TRUE)
+
+genus_abundance_Perhe991_B7<- ggplot(genus_subset_merged_Perhe991_B7, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe991_B7 Abudance in Sequencing Types")
+
+# Perhe513_B4
+
+genus_subset_Perhe513_B4 <- brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe513_B4") 
+
+genus_subset.df.Perhe513_B4 <- psmelt(genus_subset_Perhe513_B4)
+S16_Genus_subset_Perhe513_B4 <- genus_subset.df.Perhe513_B4[grepl("HiSeq",genus_subset.df.Perhe513_B4$Sequencing_type),]
+MMP_Genus_subset_Perhe513_B4 <- genus_subset.df.Perhe513_B4[grepl("MMP",genus_subset.df.Perhe513_B4$Sequencing_type),]
+
+S16_Genus_subset_Perhe513_B4["Abundance"] <- transform(S16_Genus_subset_Perhe513_B4["Abundance"], "compositional")
+MMP_Genus_subset_Perhe513_B4["Abundance"] <- transform(MMP_Genus_subset_Perhe513_B4["Abundance"], "compositional")
+
+genus_subset_merged_Perhe513_B4 <- merge(S16_Genus_subset_Perhe513_B4, MMP_Genus_subset_Perhe513_B4, all = TRUE)
+
+genus_abundance_Perhe513_B4 <- ggplot(genus_subset_merged_Perhe513_B4, aes(x = Sequencing_type, y = Abundance, fill = genus)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Genus Perhe513_B4 Abudance in Sequencing Types")
+
+## Repeated for family data 
+
+genus_subset_Perhe1058_M <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe1058_M") 
+
+genus_subset.df.Perhe1058_M <- psmelt(genus_subset_Perhe1058_M)
+S16_Genus_subset_Perhe1058_M <- genus_subset.df.Perhe1058_M[grepl("MiSeq",genus_subset.df.Perhe1058_M$Sequencing_type),]
+MMP_Genus_subset_Perhe1058_M <- genus_subset.df.Perhe1058_M[grepl("MMP",genus_subset.df.Perhe1058_M$Sequencing_type),]
+
+S16_Genus_subset_Perhe1058_M["Abundance"] <- transform(S16_Genus_subset_Perhe1058_M["Abundance"], "compositional")
+MMP_Genus_subset_Perhe1058_M["Abundance"] <- transform(MMP_Genus_subset_Perhe1058_M["Abundance"], "compositional")
+
+genus_subset_merged_Perhe1058_M <- merge(S16_Genus_subset_Perhe1058_M, MMP_Genus_subset_Perhe1058_M, all = TRUE)
+
+fam_abundance_Perhe1058_M <- ggplot(genus_subset_merged_Perhe1058_M, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe1058_M Abudance in Sequencing Types")
+
+# Perhe18_M
+
+genus_subset_Perhe18_M <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe18_M") 
+
+genus_subset.df.Perhe18_M<- psmelt(genus_subset_Perhe18_M)
+S16_Genus_subset_Perhe18_M <- genus_subset.df.Perhe18_M[grepl("HiSeq",genus_subset.df.Perhe18_M$Sequencing_type),]
+MMP_Genus_subset_Perhe18_M <- genus_subset.df.Perhe18_M[grepl("MMP",genus_subset.df.Perhe18_M$Sequencing_type),]
+
+S16_Genus_subset_Perhe18_M["Abundance"] <- transform(S16_Genus_subset_Perhe18_M["Abundance"], "compositional")
+MMP_Genus_subset_Perhe18_M["Abundance"] <- transform(MMP_Genus_subset_Perhe18_M["Abundance"], "compositional")
+
+genus_subset_merged_Perhe18_M <- merge(S16_Genus_subset_Perhe18_M, MMP_Genus_subset_Perhe18_M, all = TRUE)
+
+fam_abundance_Perhe18_M <- ggplot(genus_subset_merged_Perhe18_M, aes(x = Sequencing_type, y = Abundance, fill = family)) +
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe18_M Abudance in Sequencing Types")
+
+# Perhe1052_M
+
+genus_subset_Perhe1052_M <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe1052_M") 
+
+genus_subset.df.Perhe1052_M <- psmelt(genus_subset_Perhe1052_M)
+S16_Genus_subset_Perhe1052_M <- genus_subset.df.Perhe1052_M[grepl("MiSeq",genus_subset.df.Perhe1052_M$Sequencing_type),]
+MMP_Genus_subset_Perhe1052_M <- genus_subset.df.Perhe1052_M[grepl("MMP",genus_subset.df.Perhe1052_M$Sequencing_type),]
+
+S16_Genus_subset_Perhe1052_M["Abundance"] <- transform(S16_Genus_subset_Perhe1052_M["Abundance"], "compositional")
+MMP_Genus_subset_Perhe1052_M["Abundance"] <- transform(MMP_Genus_subset_Perhe1052_M["Abundance"], "compositional")
+
+genus_subset_merged_Perhe1052_M <- merge(S16_Genus_subset_Perhe1052_M, MMP_Genus_subset_Perhe1052_M, all = TRUE)
+
+fam_abundance_Perhe1052_M <- ggplot(genus_subset_merged_Perhe1052_M, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe1052_M Abudance in Sequencing Types")
+
+# Perhe241_F
+
+genus_subset_Perhe241_F <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe241_F") 
+
+genus_subset.df.Perhe241_F <- psmelt(genus_subset_Perhe241_F)
+S16_Genus_subset_Perhe241_F <- genus_subset.df.Perhe241_F[grepl("HiSeq",genus_subset.df.Perhe241_F$Sequencing_type),]
+MMP_Genus_subset_Perhe241_F<- genus_subset.df.Perhe241_F[grepl("MMP",genus_subset.df.Perhe241_F$Sequencing_type),]
+
+S16_Genus_subset_Perhe241_F["Abundance"] <- transform(S16_Genus_subset_Perhe241_F["Abundance"], "compositional")
+MMP_Genus_subset_Perhe241_F["Abundance"] <- transform(MMP_Genus_subset_Perhe241_F["Abundance"], "compositional")
+
+genus_subset_merged_Perhe241_F <- merge(S16_Genus_subset_Perhe241_F, MMP_Genus_subset_Perhe241_F, all = TRUE)
+
+fam_abundance_Perhe241_F <- ggplot(genus_subset_merged_Perhe241_F, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe241_F Abudance in Sequencing Types")
+
+# Perhe969_M
+
+genus_subset_Perhe969_M <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe969_M") 
+
+genus_subset.df.Perhe969_M <- psmelt(genus_subset_Perhe969_M)
+S16_Genus_subset_Perhe969_M <- genus_subset.df.Perhe969_M[grepl("MiSeq",genus_subset.df.Perhe969_M$Sequencing_type),]
+MMP_Genus_subset_Perhe969_M <- genus_subset.df.Perhe969_M[grepl("MMP",genus_subset.df.Perhe969_M$Sequencing_type),]
+
+S16_Genus_subset_Perhe969_M["Abundance"] <- transform(S16_Genus_subset_Perhe969_M["Abundance"], "compositional")
+MMP_Genus_subset_Perhe969_M["Abundance"] <- transform(MMP_Genus_subset_Perhe969_M["Abundance"], "compositional")
+
+genus_subset_merged_Perhe969_M <- merge(S16_Genus_subset_Perhe969_M, MMP_Genus_subset_Perhe969_M, all = TRUE)
+
+fam_abundance_Perhe969_M <- ggplot(genus_subset_merged_Perhe969_M, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe969_M Abudance in Sequencing Types")
+
+# Infant
+# Perhe74_B5
+
+genus_subset_Perhe74_B5 <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe74_B5") 
+
+genus_subset.df.Perhe74_B5 <- psmelt(genus_subset_Perhe74_B5)
+S16_Genus_subset_Perhe74_B5 <- genus_subset.df.Perhe74_B5[grepl("MiSeq",genus_subset.df.Perhe74_B5$Sequencing_type),]
+MMP_Genus_subset_Perhe74_B5 <- genus_subset.df.Perhe74_B5[grepl("MMP",genus_subset.df.Perhe74_B5$Sequencing_type),]
+
+S16_Genus_subset_Perhe74_B5["Abundance"] <- transform(S16_Genus_subset_Perhe74_B5["Abundance"], "compositional")
+MMP_Genus_subset_Perhe74_B5["Abundance"] <- transform(MMP_Genus_subset_Perhe74_B5["Abundance"], "compositional")
+
+genus_subset_merged_Perhe74_B5 <- merge(S16_Genus_subset_Perhe74_B5, MMP_Genus_subset_Perhe74_B5, all = TRUE)
+
+fam_abundance_Perhe74_B5 <- ggplot(genus_subset_merged_Perhe74_B5, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe74_B5 Abudance in Sequencing Types")
+
+# Perhe78_B5
+
+genus_subset_Perhe78_B5 <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe78_B5") 
+
+genus_subset.df.Perhe78_B5 <- psmelt(genus_subset_Perhe78_B5)
+S16_Genus_subset_Perhe78_B5 <- genus_subset.df.Perhe78_B5[grepl("HiSeq",genus_subset.df.Perhe78_B5$Sequencing_type),]
+MMP_Genus_subset_Perhe78_B5 <- genus_subset.df.Perhe78_B5[grepl("MMP",genus_subset.df.Perhe78_B5$Sequencing_type),]
+
+S16_Genus_subset_Perhe78_B5["Abundance"] <- transform(S16_Genus_subset_Perhe78_B5["Abundance"], "compositional")
+MMP_Genus_subset_Perhe78_B5["Abundance"] <- transform(MMP_Genus_subset_Perhe78_B5["Abundance"], "compositional")
+
+genus_subset_merged_Perhe78_B5 <- merge(S16_Genus_subset_Perhe78_B5, MMP_Genus_subset_Perhe78_B5, all = TRUE)
+
+fam_abundance_Perhe78_B5 <- ggplot(genus_subset_merged_Perhe78_B5, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe78_B5 Abudance in Sequencing Types")
+
+# Perhe766_B5
+
+genus_subset_Perhe766_B5 <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe766_B5") 
+
+genus_subset.df.Perhe766_B5 <- psmelt(genus_subset_Perhe766_B5)
+S16_Genus_subset_Perhe766_B5 <- genus_subset.df.Perhe766_B5[grepl("HiSeq",genus_subset.df.Perhe766_B5$Sequencing_type),]
+MMP_Genus_subset_Perhe766_B5 <- genus_subset.df.Perhe766_B5[grepl("MMP",genus_subset.df.Perhe766_B5$Sequencing_type),]
+
+S16_Genus_subset_Perhe766_B5["Abundance"] <- transform(S16_Genus_subset_Perhe766_B5["Abundance"], "compositional")
+MMP_Genus_subset_Perhe766_B5["Abundance"] <- transform(MMP_Genus_subset_Perhe766_B5["Abundance"], "compositional")
+
+genus_subset_merged_Perhe766_B5 <- merge(S16_Genus_subset_Perhe766_B5, MMP_Genus_subset_Perhe766_B5, all = TRUE)
+
+fam_abundance_Perhe766_B5<- ggplot(genus_subset_merged_Perhe766_B5, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe766_B5 Abudance in Sequencing Types")
+
+# Perhe991_B7
+
+genus_subset_Perhe991_B7 <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe991_B7") 
+
+genus_subset.df.Perhe991_B7<- psmelt(genus_subset_Perhe991_B7)
+S16_Genus_subset_Perhe991_B7 <- genus_subset.df.Perhe991_B7[grepl("MiSeq",genus_subset.df.Perhe991_B7$Sequencing_type),]
+MMP_Genus_subset_Perhe991_B7 <- genus_subset.df.Perhe991_B7[grepl("MMP",genus_subset.df.Perhe991_B7$Sequencing_type),]
+
+S16_Genus_subset_Perhe991_B7["Abundance"] <- transform(S16_Genus_subset_Perhe991_B7["Abundance"], "compositional")
+MMP_Genus_subset_Perhe991_B7["Abundance"] <- transform(MMP_Genus_subset_Perhe991_B7["Abundance"], "compositional")
+
+genus_subset_merged_Perhe991_B7 <- merge(S16_Genus_subset_Perhe991_B7, MMP_Genus_subset_Perhe991_B7, all = TRUE)
+
+fam_abundance_Perhe991_B7<- ggplot(genus_subset_merged_Perhe991_B7, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe991_B7 Abudance in Sequencing Types")
+
+# Perhe513_B4
+
+genus_subset_Perhe513_B4 <- fam_brakenHumGut %>%
+  subset_samples(brakenHumGut@sam_data == "Perhe513_B4") 
+
+genus_subset.df.Perhe513_B4 <- psmelt(genus_subset_Perhe513_B4)
+S16_Genus_subset_Perhe513_B4 <- genus_subset.df.Perhe513_B4[grepl("HiSeq",genus_subset.df.Perhe513_B4$Sequencing_type),]
+MMP_Genus_subset_Perhe513_B4 <- genus_subset.df.Perhe513_B4[grepl("MMP",genus_subset.df.Perhe513_B4$Sequencing_type),]
+
+S16_Genus_subset_Perhe513_B4["Abundance"] <- transform(S16_Genus_subset_Perhe513_B4["Abundance"], "compositional")
+MMP_Genus_subset_Perhe513_B4["Abundance"] <- transform(MMP_Genus_subset_Perhe513_B4["Abundance"], "compositional")
+
+genus_subset_merged_Perhe513_B4 <- merge(S16_Genus_subset_Perhe513_B4, MMP_Genus_subset_Perhe513_B4, all = TRUE)
+
+fam_abundance_Perhe513_B4 <- ggplot(genus_subset_merged_Perhe513_B4, aes(x = Sequencing_type, y = Abundance, fill = family)) + 
+  geom_bar(stat = "identity") +
+  theme(legend.position="none") +
+  ggtitle("MMP vs 16S Family Perhe513_B4 Abudance in Sequencing Types")
+
+# Selected only few to include in markdown based on interest levels
+
+genus_abundance_Perhe1058_M
+fam_abundance_Perhe1058_M
+
+#genus_abundance_Perhe18_M
+#fam_abundance_Perhe18_M
+
+#genus_abundance_Perhe1052_M
+#fam_abundance_Perhe1052_M
+
+#genus_abundance_Perhe241_F
+#fam_abundance_Perhe241_F
+
+#genus_abundance_Perhe969_M
+#fam_abundance_Perhe969_M
+
+genus_abundance_Perhe74_B5
+fam_abundance_Perhe74_B5
+
+genus_abundance_Perhe78_B5
+fam_abundance_Perhe78_B5
+
+#genus_abundance_Perhe766_B5
+#fam_abundance_Perhe766_B5
+
+#genus_abundance_Perhe991_B7
+#fam_abundance_Perhe991_B7
+
+#genus_abundance_Perhe513_B4
+#fam_abundance_Perhe513_B4
+```
+
+## PERMANOVA
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+# Get transformed data 
+t_brakenHumGut_16S_MMP@sam_data[["Sequencing_type"]] <- gsub("HiSeq|MiSeq","16S",t_brakenHumGut_16S_MMP@sam_data[["Sequencing_type"]] )
+
+# Get distance object
+dist = phyloseq::distance(t_brakenHumGut_16S_MMP, method = "bray")
+
+# Ordination object
+ordination = ordinate(t_brakenHumGut_16S_MMP, method = "PCoA", distance = dist) # should I use transformed obj here?
+
+# Plot ordination
+PCoA_genus <- plot_ordination(t_brakenHumGut_16S_MMP, ordination, color = "Sequencing_type", title="PCoA Genus MMP vs 16S") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+PCoA_genus
+
+# Run permanova 
+perm_genus_metadata <- data.frame(sample_data(t_brakenHumGut_16S_MMP))
+sequencing_type_adonis <- adonis2(dist ~ Sequencing_type, data = perm_genus_metadata)
+sequencing_type_adonis
+
+# subset parental samples to see if there is a significance there
+
+subset_parents <- subset_samples(t_brakenHumGut_16S_MMP, Sample_type %in% c("M","F"))
+
+parent_dist = phyloseq::distance(subset_parents, method = "bray")
+
+parent_ordination = ordinate(subset_parents, method = "PCoA", distance = parent_dist)
+
+parent_PCoA_genus <- plot_ordination(subset_parents, parent_ordination, color = "Sequencing_type",title="Parent PCoA Genus MMP vs 16S") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+parent_PCoA_genus
+
+parent_perm_genus_metadata <- data.frame(sample_data(subset_parents))
+parent_sequencing_type_adonis <- adonis2(parent_dist ~ Sequencing_type, data = parent_perm_genus_metadata)
+parent_sequencing_type_adonis
+
+## Family 
+
+fam_t_brakenHumGut_16S_MMP@sam_data[["Sequencing_type"]] <- gsub("HiSeq|MiSeq","16S",fam_t_brakenHumGut_16S_MMP@sam_data[["Sequencing_type"]] )
+
+fam_dist = phyloseq::distance(fam_t_brakenHumGut_16S_MMP, method = "bray")
+
+fam_ordination = ordinate(fam_t_brakenHumGut_16S_MMP, method = "PCoA", distance = fam_dist)
+
+fam_PCoA_genus <- plot_ordination(fam_t_brakenHumGut_16S_MMP, fam_ordination, color = "Sequencing_type", title="PCoA Family MMP vs 16S") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+fam_PCoA_genus
+
+fam_perm_genus_metadata <- data.frame(sample_data(fam_t_brakenHumGut_16S_MMP))
+fam_sequencing_type_adonis <- adonis2(fam_dist ~ Sequencing_type, data = fam_perm_genus_metadata)
+fam_sequencing_type_adonis
+
+# subset parental samples to see if there is a significance there
+
+fam_subset_parents <- subset_samples(fam_t_brakenHumGut_16S_MMP, Sample_type %in% c("M","F"))
+
+fam_parent_dist = phyloseq::distance(fam_subset_parents, method = "bray")
+
+fam_parent_ordination = ordinate(fam_subset_parents, method = "PCoA", distance = fam_parent_dist)
+
+fam_parent_PCoA_genus <- plot_ordination(fam_subset_parents, fam_parent_ordination, color = "Sequencing_type",title="Parent PCoA Family MMP vs 16S") + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+fam_parent_PCoA_genus
+
+fam_parent_perm_genus_metadata <- data.frame(sample_data(fam_subset_parents))
+fam_parent_sequencing_type_adonis <- adonis2(fam_parent_dist ~ Sequencing_type, data = fam_parent_perm_genus_metadata)
+fam_parent_sequencing_type_adonis
+```
+
