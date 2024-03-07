@@ -1,0 +1,177 @@
+---
+title: "PCA on HCLUST - Aitchison (Family)"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+library(ape)
+library(phyloseq)
+library(tidyverse)
+library(writexl)
+library(vegan)
+library(microbiome)
+library(dendextend)
+library(factoextra)
+library(NbClust)
+library(philentropy)
+
+setwd("~/OneDrive/University of Helsinki/msc_thesis/bact_comm")
+```
+
+```{r, message = FALSE}
+physeqR <- readRDS("PhySeq_BrakenHumGut_05.07.22.rds")
+# Keep only Bacteria and archea counts
+physeq <- subset_taxa(physeqR, superkingdom %in% c("Bacteria", "Archea"))
+
+# aggregate genus & remove unknowns
+physeq <- aggregate_taxa(physeq, level="family")
+physeq <- subset_taxa(physeq, ! family=="Unknown")
+
+# sample selection
+set.seed(42) 
+physeq_p <- subset_samples(physeq,Sample_type %in% c("M","F"))
+physeq <- subset_samples(physeq,Sample_type %in% c("B4","B5","B7", "B9","M","F"))
+physB4.5 <- subset_samples(physeq,Sample_type %in% c("B4", "B5"))
+physB7.9 <- subset_samples(physeq,Sample_type %in% c("B7", "B9"))
+
+######### denoising
+#B4.5
+physeq.comp <- microbiome::transform(physB4.5, "compositional")
+taxaB4.5 <- core_members(physeq.comp, detection = 0.1/100, prevalence = 1/100)
+physB4.5_denoised <- prune_taxa(taxaB4.5, physB4.5)
+#B7
+physeq.comp <- microbiome::transform(physB7.9, "compositional")
+taxaB7.9 <- core_members(physeq.comp, detection = 0.1/100, prevalence = 1/100)
+physB7.9_denoised <- prune_taxa(taxaB7.9, physB7.9)
+#Parental
+physeq.comp <- microbiome::transform(physeq_p, "compositional")
+taxaP <- core_members(physeq.comp, detection = 0.1/100, prevalence = 1/100)
+physP_denoised <- prune_taxa(taxaP, physeq_p)
+
+# merge core bacteria
+taxapall <- c(taxaB4.5,taxaB7.9,taxaP)
+taxapall_unique <- unique(taxapall)
+physeq_denoised <- prune_taxa(taxapall_unique, physeq)
+
+```
+
+
+## PCA datapoint B4 & B5
+
+```{r}
+ps_clr_abund <- microbiome::transform(physB4.5_denoised, "clr")
+ps_rel_otu <- data.frame(t(phyloseq::otu_table(ps_clr_abund)))
+ps_rel_otu <- ps_rel_otu %>% rownames_to_column("Sample_ID")
+
+#add cluster data
+cluster <- read_csv("recap_clusters.csv") %>%
+  select(Sample_ID, Cluster)
+merged <- left_join(ps_rel_otu, cluster)
+
+pca.data <- merged %>% select(-Cluster) %>%
+  column_to_rownames(var="Sample_ID")
+PCA.res<-prcomp(pca.data)
+fviz_eig(PCA.res) # a bit confused on this chunk of code
+```
+
+```{r}
+fviz_pca_ind(PCA.res, geom="point",
+             col.ind = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     
+             )
+```
+
+
+```{r}
+fviz_pca_ind(PCA.res, geom="point",
+             habillage=merged$Cluster) +
+     theme_minimal()
+
+#ggsave("PCA_points_B4.5.pdf", width = 25, height = 15, units = "cm", limitsize = F)
+```
+
+
+```{r}
+fviz_pca_var(PCA.res, select.var = list(contrib = 10), col.var = "contrib", 
+             gradient.cols = c("#005F73","#EE9B00", "#9B2226"))
+
+#ggsave("PCA_var_B4.pdf", width = 25, height = 15, units = "cm", limitsize = F)
+```
+
+
+## PCA datapoint B7 & B9
+
+```{r}
+ps_clr_abund <- microbiome::transform(physB7.9_denoised, "clr")
+ps_rel_otu <- data.frame(t(phyloseq::otu_table(ps_clr_abund)))
+ps_rel_otu <- ps_rel_otu %>% rownames_to_column("Sample_ID")
+
+#add cluster data
+cluster <- read_csv("recap_clusters.csv") %>%
+  select(Sample_ID, Cluster)
+merged <- left_join(ps_rel_otu, cluster)
+
+pca.data <- merged %>% select(-Cluster) %>%
+  column_to_rownames(var="Sample_ID")
+PCA.res<-prcomp(pca.data)
+fviz_eig(PCA.res)
+```
+
+```{r}
+fviz_pca_ind(PCA.res, geom="point",
+             col.ind = "cos2", 
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     
+             )
+```
+
+
+```{r}
+fviz_pca_ind(PCA.res, geom="point",
+             habillage=merged$Cluster) +
+     theme_minimal()
+
+#ggsave("PCA_points_B7.9.pdf", width = 25, height = 15, units = "cm", limitsize = F)
+```
+
+
+```{r}
+fviz_pca_var(PCA.res, select.var = list(contrib = 10), col.var = "contrib", 
+             gradient.cols = c("#005F73","#EE9B00", "#9B2226"))
+
+#ggsave("PCA_var_B7.9.pdf", width = 25, height = 15, units = "cm", limitsize = F)
+```
+# All timpoints PCoA
+
+```{r}
+ps_clr_abund <- microbiome::transform(physeq_denoised, "clr")
+#
+ps_rel_otu <- data.frame(phyloseq::otu_table(ps_clr_abund))
+ps_rel_otu <- t(ps_rel_otu)
+ait_dist <- vegan::vegdist(ps_rel_otu, method = "euclidean")
+
+ord <- ordinate(physeq_denoised, "MDS", distance = "ait_dist")
+
+Pal5 <- c("#9B2226", "#BB3E03", "#EE9B00", "#E9D8A6",
+          "#005F73")
+physeq_denoised@sam_data$Sample_type <- gsub('M', 'P', gsub('F', 'P', physeq_denoised@sam_data$Sample_type))
+plot_ordination(physeq_denoised, ord, color = "Sample_type") + 
+  geom_point(size = 0.75) +  
+  scale_color_manual(values = Pal5) + 
+  theme_classic()
+ggsave("PCoA_euclidian.pdf")
+```
+```{r}
+perm_metadata <- data.frame(sample_data(physeq_denoised))
+adonis <- adonis2(ait_dist ~ Sample_type, data = perm_metadata)
+adonis
+
+disp <- anova(betadisper(ait_dist, perm_metadata$Sample_type))
+disp
+```
+
+

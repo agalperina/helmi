@@ -1,0 +1,251 @@
+---
+title: "Hclust Braken - Family - Aitchison"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+library(ape)
+library(phyloseq)
+library(tidyverse)
+library(writexl)
+library(vegan)
+library(microbiome)
+library(dendextend)
+library(factoextra)
+library(NbClust)
+library(philentropy)
+
+setwd("~/OneDrive/University of Helsinki/msc_thesis/bact_comm")
+```
+
+
+```{r}
+physeqR <- readRDS("PhySeq_BrakenHumGut_05.07.22.rds")
+```
+
+```{r, message = FALSE}
+# Keep only Bacteria and archea counts
+physeq <- subset_taxa(physeqR, superkingdom %in% c("Bacteria", "Archea"))
+
+# aggregate genus & remove unknowns
+physeq <- aggregate_taxa(physeq, level="family") # if aggregating genus why do it at family level here?
+physeq <- subset_taxa(physeq, ! family=="Unknown")
+
+# sample selection
+set.seed(42) # why 42?
+physeq_p <- subset_samples(physeq,Sample_type %in% c("M","F"))
+physeq <- subset_samples(physeq,Sample_type %in% c("B4","B5","B7","B9"))
+physB4.5 <- subset_samples(physeq,Sample_type %in% c("B4", "B5")) # did we split this as before and after solid food or did you test to see which samples clustered better together?
+physB7.9 <- subset_samples(physeq,Sample_type %in% c("B7", "B9"))
+
+######### denoising
+#B4.5
+physeq.comp <- microbiome::transform(physB4.5, "compositional")
+taxaB4.5 <- core_members(physeq.comp, detection = 0.1/100, prevalence = 1/100)
+physB4.5_denoised <- prune_taxa(taxaB4.5, physB4.5)
+#B7.9
+physeq.comp <- microbiome::transform(physB7.9, "compositional")
+taxaB7.9 <- core_members(physeq.comp, detection = 0.1/100, prevalence = 1/100)
+physB7.9_denoised <- prune_taxa(taxaB7.9, physB7.9)
+#Parental
+physeq.comp <- microbiome::transform(physeq_p, "compositional")
+taxaP <- core_members(physeq.comp, detection = 0.1/100, prevalence = 1/100)
+physP_denoised <- prune_taxa(taxaP, physeq_p)
+
+# merge core bacteria
+taxapall <- c(taxaB4.5,taxaB7.9)
+taxapall_unique <- unique(taxapall)
+physeq_denoised <- prune_taxa(taxapall_unique, physeq)
+
+# CLR transform
+ps_clr_abund <- microbiome::transform(physeq_denoised, "clr")
+
+```
+
+## Aitchinson computation
+
+```{r}
+ps_rel_otu <- data.frame(phyloseq::otu_table(ps_clr_abund))
+ps_rel_otu <- t(ps_rel_otu)
+ait_dist <- vegan::vegdist(ps_rel_otu, method = "euclidean")
+```
+
+## Hclust 
+```{r}
+clust <- hclust(ait_dist, method = "ward.D2")
+ward <- as.dendrogram(clust)
+# add color by timepoint
+meta <- data.frame(phyloseq::sample_data(ps_clr_abund))
+colorCode <- c(B4 = "blue", B6= "black", B7= "grey", B9 = "red")
+labels_colors(ward) <- colorCode[meta$Sample_type][order.dendrogram(ward)]
+#Plot
+plot(ward)
+```
+
+### Choice number of clusters
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "kl", alphaBeale = 0.1)
+fviz_nbclust(res) # a bit confused as to what this is for, cal optimal clusters?
+```
+
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "ch", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "silhouette", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+
+```{r}
+# export clusters 
+clusters <- cutree(ward, k=3)
+clusters_allTP <- data.frame(as.list(clusters)) %>% pivot_longer(everything(), names_to = "Sample_ID", values_to="ClusterID_allWGS")
+#write_csv(clusters_allTP, "HClust_Fam_CLR_allWGS_22.11.21.csv")
+```
+
+# early time points
+
+## Aitchinson computation
+
+```{r}
+ps_clr_abund <- microbiome::transform(physB4.5_denoised, "clr")
+ps_rel_otu <- data.frame(phyloseq::otu_table(ps_clr_abund))
+ps_rel_otu <- t(ps_rel_otu)
+ait_dist <- vegan::vegdist(ps_rel_otu, method = "euclidean")
+```
+
+## Hclust 
+```{r}
+clust <- hclust(ait_dist, method = "ward.D2")
+ward <- as.dendrogram(clust)
+# add color by timepoint
+meta <- data.frame(phyloseq::sample_data(ps_clr_abund))
+colorCode <- c(B4 = "blue", B6= "black", B7= "grey", B9 = "red")
+labels_colors(ward) <- colorCode[meta$Sample_type][order.dendrogram(ward)]
+#Plot
+plot(ward)
+```
+
+### Choice number of clusters
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "kl", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "ch", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "silhouette", alphaBeale = 0.1)
+fviz_nbclust(res) # why did we go with 3 (why did we got with this algorithm)?
+```
+
+
+```{r}
+# export clusters 
+clusters <- cutree(ward, k=3)
+clusters_TP <- data.frame(as.list(clusters)) %>% pivot_longer(everything(), names_to = "Sample_ID", values_to="ClusterID_allWGS")
+#write_csv(clusters_TP, "HClust_F_CLR_B4.5_18.08.22.csv")
+```
+
+# later time points
+
+## Aitchinson computation
+
+```{r}
+ps_clr_abund <- microbiome::transform(physB7.9_denoised, "clr")
+ps_rel_otu <- data.frame(phyloseq::otu_table(ps_clr_abund))
+ps_rel_otu <- t(ps_rel_otu)
+ait_dist <- vegan::vegdist(ps_rel_otu, method = "euclidean")
+```
+
+## Hclust 
+```{r}
+clust <- hclust(ait_dist, method = "ward.D2")
+ward <- as.dendrogram(clust)
+# add color by timepoint
+meta <- data.frame(phyloseq::sample_data(ps_clr_abund))
+colorCode <- c(B4 = "blue", B6= "black", B7= "grey", B9 = "red")
+labels_colors(ward) <- colorCode[meta$Sample_type][order.dendrogram(ward)]
+#Plot
+plot(ward)
+```
+
+### Choice number of clusters
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "kl", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "ch", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "silhouette", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+
+```{r}
+# export clusters 
+clusters <- cutree(ward, k=2)
+clusters_TP <- data.frame(as.list(clusters)) %>% pivot_longer(everything(), names_to = "Sample_ID", values_to="ClusterID_allWGS")
+#write_csv(clusters_TP, "HClust_F_CLR_B7.9_18.08.22.csv")
+```
+
+#Parental
+
+## Aitchinson computation
+
+```{r}
+ps_clr_abund <- microbiome::transform(physP_denoised, "clr")
+ps_rel_otu <- data.frame(phyloseq::otu_table(ps_clr_abund))
+ps_rel_otu <- t(ps_rel_otu)
+ait_dist <- vegan::vegdist(ps_rel_otu, method = "euclidean")
+```
+
+## Hclust 
+```{r}
+clust <- hclust(ait_dist, method = "ward.D2")
+ward <- as.dendrogram(clust)
+# add color by timepoint
+meta <- data.frame(phyloseq::sample_data(ps_clr_abund))
+colorCode <- c(B4 = "blue", B6= "black", B7= "grey", B9 = "red", M = "green",F = "pink")
+labels_colors(ward) <- colorCode[meta$Sample_type][order.dendrogram(ward)]
+#Plot
+plot(ward)
+```
+
+### Choice number of clusters
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "kl", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "ch", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+```{r}
+res <- NbClust(data = ps_rel_otu, diss = NULL, distance = "euclidean", min.nc = 2, max.nc = 15,  method ="ward.D2", index = "silhouette", alphaBeale = 0.1)
+fviz_nbclust(res)
+```
+
+
+```{r}
+# export clusters 
+clusters <- cutree(ward, k=1)
+clusters_TP <- data.frame(as.list(clusters)) %>% pivot_longer(everything(), names_to = "Sample_ID", values_to="ClusterID_allWGS")
+write_csv(clusters_TP, "HClust_F_CLR_P_13.11.23.csv")
+```
